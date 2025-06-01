@@ -24,3 +24,5 @@ go.work.sum
 # env file
 .env
 helper/metricsutil.go
+bin/vault-plugin-secrets-openai
+.vagrant/

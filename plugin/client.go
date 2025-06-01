@@ -1,0 +1,494 @@
+// Copyright Ricardo Oliveira 2025.
+// SPDX-License-Identifier: MPL-2.0
+
+package openaisecrets
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/hashicorp/go-hclog"
+)
+
+const (
+	// Default API endpoint for OpenAI
+	DefaultAPIEndpoint = "https://api.openai.com/v1"
+
+	// API endpoints - without leading slash as DefaultAPIEndpoint already includes /v1
+	projectsEndpoint        = "projects"
+	serviceAccountsEndpoint = "service_accounts"
+	apiKeysEndpoint         = "api_keys"
+)
+
+// Client represents an OpenAI API client
+type Client struct {
+	httpClient     *http.Client
+	apiEndpoint    string
+	adminAPIKey    string
+	organizationID string
+	logger         hclog.Logger
+}
+
+// NewClient creates a new OpenAI client
+func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
+	return &Client{
+		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		apiEndpoint:    DefaultAPIEndpoint,
+		adminAPIKey:    adminAPIKey,
+		organizationID: "", // Will be set through SetConfig
+		logger:         logger,
+	}
+}
+
+// Config contains configuration for the OpenAI client
+type Config struct {
+	AdminAPIKey    string `json:"admin_api_key"`
+	APIEndpoint    string `json:"api_endpoint"`
+	OrganizationID string `json:"organization_id"`
+}
+
+// ServiceAccount represents an OpenAI project service account
+type ServiceAccount struct {
+	ID          string     `json:"id"`
+	ProjectID   string     `json:"project_id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+}
+
+// APIKey represents an OpenAI API key
+type APIKey struct {
+	ID           string     `json:"id"`
+	Key          string     `json:"key,omitempty"` // Only available when creating a new key
+	Name         string     `json:"name"`
+	ServiceAccID string     `json:"service_account_id"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+}
+
+// CreateServiceAccountRequest represents a request to create a service account
+type CreateServiceAccountRequest struct {
+	ProjectID   string `json:"project_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// CreateAPIKeyRequest represents a request to create an API key
+type CreateAPIKeyRequest struct {
+	Name         string     `json:"name"`
+	ServiceAccID string     `json:"service_account_id"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+}
+
+// SetConfig updates the client configuration
+func (c *Client) SetConfig(config *Config) error {
+	if config.AdminAPIKey == "" {
+		return fmt.Errorf("admin API key is required")
+	}
+
+	if config.OrganizationID == "" {
+		return fmt.Errorf("organization ID is required")
+	}
+
+	c.adminAPIKey = config.AdminAPIKey
+	c.organizationID = config.OrganizationID
+
+	if config.APIEndpoint != "" {
+		c.apiEndpoint = config.APIEndpoint
+	}
+
+	return nil
+}
+
+// doRequest performs an HTTP request with appropriate headers and error handling
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	var reqBody io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling request body: %w", err)
+		}
+		reqBody = bytes.NewBuffer(jsonBody)
+	}
+
+	url := c.apiEndpoint + path
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.adminAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("OpenAI-Beta", "project-service-accounts=v1")
+
+	// Set the organization ID in the header rather than in the URL path
+	if c.organizationID != "" {
+		req.Header.Set("OpenAI-Organization", c.organizationID)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.logger.Error("Failed to close response body", "error", err)
+		}
+	}()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+				Code    string `json:"code,omitempty"`
+				Param   string `json:"param,omitempty"`
+			} `json:"error"`
+		}
+
+		// Try to parse error as OpenAI structured error format
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error.Message != "" {
+			c.logger.Error("OpenAI API error",
+				"status", resp.StatusCode,
+				"error_type", errResp.Error.Type,
+				"error_code", errResp.Error.Code,
+				"message", errResp.Error.Message,
+				"param", errResp.Error.Param,
+				"method", method,
+				"path", path)
+
+			// Return error with all available context
+			errMsg := fmt.Sprintf("API error (%d): %s - %s",
+				resp.StatusCode, errResp.Error.Type, errResp.Error.Message)
+
+			if errResp.Error.Code != "" {
+				errMsg += fmt.Sprintf(" (code: %s)", errResp.Error.Code)
+			}
+
+			if errResp.Error.Param != "" {
+				errMsg += fmt.Sprintf(" (param: %s)", errResp.Error.Param)
+			}
+
+			return nil, fmt.Errorf("%s", errMsg)
+		}
+
+		// Fallback for non-standard error format
+		c.logger.Error("OpenAI API non-standard error",
+			"status", resp.StatusCode,
+			"body", string(respBody),
+			"method", method,
+			"path", path)
+		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
+// CreateServiceAccount creates a new project service account
+func (c *Client) CreateServiceAccount(ctx context.Context, req CreateServiceAccountRequest) (*ServiceAccount, error) {
+	// Validate inputs
+	if req.ProjectID == "" {
+		return nil, fmt.Errorf("project ID is required")
+	}
+
+	if req.Name == "" {
+		return nil, fmt.Errorf("service account name is required")
+	}
+
+	// Validate service account name according to OpenAI requirements
+	if err := ValidateServiceAccountName(req.Name); err != nil {
+		c.logger.Error("Invalid service account name",
+			"name", req.Name,
+			"error", err)
+		return nil, fmt.Errorf("invalid service account name: %w", err)
+	}
+
+	// Log creation attempt
+	c.logger.Debug("Creating service account",
+		"project_id", req.ProjectID,
+		"name", req.Name,
+		"description", req.Description)
+
+	// Construct the path for creating a service account
+	path := fmt.Sprintf("/%s/%s/%s",
+		projectsEndpoint,
+		req.ProjectID,
+		serviceAccountsEndpoint)
+
+	respBody, err := c.doRequest(ctx, http.MethodPost, path, req)
+	if err != nil {
+		c.logger.Error("Failed to create service account",
+			"project_id", req.ProjectID,
+			"name", req.Name,
+			"error", err)
+		return nil, fmt.Errorf("error creating service account: %w", err)
+	}
+
+	var svcAccount ServiceAccount
+	if err := json.Unmarshal(respBody, &svcAccount); err != nil {
+		c.logger.Error("Failed to parse service account response",
+			"error", err,
+			"response", string(respBody))
+		return nil, fmt.Errorf("error parsing service account response: %w", err)
+	}
+
+	c.logger.Info("Created service account successfully",
+		"service_account_id", svcAccount.ID,
+		"project_id", svcAccount.ProjectID,
+		"name", svcAccount.Name)
+
+	return &svcAccount, nil
+}
+
+// DeleteServiceAccount deletes a service account by ID
+func (c *Client) DeleteServiceAccount(ctx context.Context, id string, projectID ...string) error {
+	// Validate inputs
+	if id == "" {
+		return fmt.Errorf("service account ID is required")
+	}
+
+	// Project ID is required for this endpoint
+	if len(projectID) == 0 || projectID[0] == "" {
+		return fmt.Errorf("project ID is required to delete a service account")
+	}
+
+	// Log deletion attempt
+	c.logger.Debug("Deleting service account",
+		"service_account_id", id,
+		"project_id", projectID[0])
+
+	// Construct the path for deleting a service account
+	path := fmt.Sprintf("/%s/%s/%s/%s",
+		projectsEndpoint,
+		projectID[0],
+		serviceAccountsEndpoint,
+		id)
+
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		c.logger.Error("Failed to delete service account",
+			"service_account_id", id,
+			"project_id", projectID[0],
+			"error", err)
+		return fmt.Errorf("error deleting service account: %w", err)
+	}
+
+	c.logger.Info("Deleted service account successfully",
+		"service_account_id", id,
+		"project_id", projectID[0])
+
+	return nil
+}
+
+// CreateAPIKey creates a new API key for a service account
+func (c *Client) CreateAPIKey(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error) {
+	// Validate inputs
+	if req.ServiceAccID == "" {
+		return nil, fmt.Errorf("service account ID is required")
+	}
+
+	if req.Name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	// Log creation attempt
+	c.logger.Debug("Creating API key",
+		"service_account_id", req.ServiceAccID,
+		"name", req.Name,
+		"expires_at", req.ExpiresAt)
+
+	path := fmt.Sprintf("/%s", apiKeysEndpoint)
+	respBody, err := c.doRequest(ctx, http.MethodPost, path, req)
+	if err != nil {
+		c.logger.Error("Failed to create API key",
+			"service_account_id", req.ServiceAccID,
+			"name", req.Name,
+			"error", err)
+		return nil, fmt.Errorf("error creating API key: %w", err)
+	}
+
+	var apiKey APIKey
+	if err := json.Unmarshal(respBody, &apiKey); err != nil {
+		c.logger.Error("Failed to parse API key response",
+			"error", err,
+			"response", string(respBody))
+		return nil, fmt.Errorf("error parsing API key response: %w", err)
+	}
+
+	// Log key was created successfully (but don't log the key itself)
+	c.logger.Info("Created API key successfully",
+		"api_key_id", apiKey.ID,
+		"service_account_id", apiKey.ServiceAccID,
+		"name", apiKey.Name,
+		"expires_at", apiKey.ExpiresAt)
+
+	return &apiKey, nil
+}
+
+// DeleteAPIKey deletes an API key by ID
+func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
+	// Validate inputs
+	if id == "" {
+		return fmt.Errorf("API key ID is required")
+	}
+
+	// Log deletion attempt
+	c.logger.Debug("Deleting API key", "api_key_id", id)
+
+	path := fmt.Sprintf("/%s/%s", apiKeysEndpoint, id)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		c.logger.Error("Failed to delete API key",
+			"api_key_id", id,
+			"error", err)
+		return fmt.Errorf("error deleting API key: %w", err)
+	}
+
+	c.logger.Info("Deleted API key successfully", "api_key_id", id)
+	return nil
+}
+
+// GetServiceAccount gets a service account by ID
+func (c *Client) GetServiceAccount(ctx context.Context, id string, projectID string) (*ServiceAccount, error) {
+	// Validate inputs
+	if id == "" {
+		return nil, fmt.Errorf("service account ID is required")
+	}
+
+	if projectID == "" {
+		return nil, fmt.Errorf("project ID is required to get a service account")
+	}
+
+	// Log retrieval attempt
+	c.logger.Debug("Getting service account",
+		"service_account_id", id,
+		"project_id", projectID)
+
+	// Construct the path for retrieving a service account
+	path := fmt.Sprintf("/%s/%s/%s/%s",
+		projectsEndpoint,
+		projectID,
+		serviceAccountsEndpoint,
+		id)
+
+	respBody, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		c.logger.Error("Failed to get service account",
+			"service_account_id", id,
+			"project_id", projectID,
+			"error", err)
+		return nil, fmt.Errorf("error getting service account: %w", err)
+	}
+
+	var svcAccount ServiceAccount
+	if err := json.Unmarshal(respBody, &svcAccount); err != nil {
+		c.logger.Error("Failed to parse service account response",
+			"error", err,
+			"response", string(respBody))
+		return nil, fmt.Errorf("error parsing service account response: %w", err)
+	}
+
+	c.logger.Debug("Successfully retrieved service account",
+		"service_account_id", svcAccount.ID,
+		"name", svcAccount.Name)
+
+	return &svcAccount, nil
+}
+
+// ListServiceAccounts returns all service accounts for a project
+func (c *Client) ListServiceAccounts(ctx context.Context, projectID string) ([]*ServiceAccount, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project ID is required")
+	}
+
+	path := fmt.Sprintf("/%s/%s/%s", projectsEndpoint, projectID, serviceAccountsEndpoint)
+	respBody, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Data []ServiceAccount `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("error parsing service accounts response: %w", err)
+	}
+
+	accounts := make([]*ServiceAccount, 0, len(result.Data))
+	for i := range result.Data {
+		accounts = append(accounts, &result.Data[i])
+	}
+	return accounts, nil
+}
+
+// CreateAdminAPIKey creates a new admin API key
+func (c *Client) CreateAdminAPIKey(ctx context.Context, name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("admin API key name is required")
+	}
+	// Per OpenAI docs: POST /admin_api_keys
+	body := map[string]interface{}{"name": name}
+	respBody, err := c.doRequest(ctx, http.MethodPost, "/admin_api_keys", body)
+	if err != nil {
+		return "", fmt.Errorf("error creating admin API key: %w", err)
+	}
+	var result struct {
+		ID  string `json:"id"`
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("error parsing admin API key response: %w", err)
+	}
+	if result.Key == "" {
+		return "", fmt.Errorf("admin API key not returned in response")
+	}
+	return result.Key, nil
+}
+
+// RevokeAdminAPIKey revokes the given admin API key
+func (c *Client) RevokeAdminAPIKey(ctx context.Context, keyID string) error {
+	if keyID == "" {
+		return fmt.Errorf("admin API key ID is required")
+	}
+	// Per OpenAI docs: DELETE /admin_api_keys/{admin_api_key_id}
+	path := fmt.Sprintf("/admin_api_keys/%s", keyID)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return fmt.Errorf("error revoking admin API key: %w", err)
+	}
+	return nil
+}
+
+// ListAdminAPIKeys lists all admin API keys
+func (c *Client) ListAdminAPIKeys(ctx context.Context) ([]map[string]interface{}, error) {
+	respBody, err := c.doRequest(ctx, http.MethodGet, "/admin_api_keys", nil)
+	if err != nil {
+		return nil, fmt.Errorf("error listing admin API keys: %w", err)
+	}
+	var result struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("error parsing admin API keys response: %w", err)
+	}
+	return result.Data, nil
+}
+
+// TestConnection tests the client connection by listing admin API keys
+func (c *Client) TestConnection(ctx context.Context) error {
+	_, err := c.ListAdminAPIKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("admin API key validation failed: %w", err)
+	}
+	return nil
+}
