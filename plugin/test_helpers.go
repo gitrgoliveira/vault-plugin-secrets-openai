@@ -69,6 +69,14 @@ func (m *mockClient) GetServiceAccount(ctx context.Context, serviceAccountID, pr
 	}
 	return &ServiceAccount{ID: serviceAccountID, ProjectID: projectID}, nil
 }
+func (m *mockClient) ValidateProject(ctx context.Context, projectID string) error {
+	// For tests, assume all project IDs are valid unless overridden
+	if m != nil && m.listServiceAccountsFn != nil {
+		_, err := m.ListServiceAccounts(ctx, projectID)
+		return err
+	}
+	return nil
+}
 
 // getTestBackend returns a configured backend for testing.
 func getTestBackend(t *testing.T) *backend {
