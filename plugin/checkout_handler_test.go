@@ -55,9 +55,10 @@ func TestCheckOut(t *testing.T) {
 	assert.Equal(t, errCheckedOut, err)
 
 	// Test checkout with nil parameters
-	err = b.CheckOut(context.TODO(), storage, serviceAccountID, newCheckOut)
+	// nolint:staticcheck // SA1012 Intentionally testing nil context behavior
+	err = b.CheckOut(nil, storage, serviceAccountID, newCheckOut)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "ctx must be provided")
+	assert.Contains(t, err.Error(), "context must be provided")
 
 	err = b.CheckOut(ctx, nil, serviceAccountID, newCheckOut)
 	assert.Error(t, err)
@@ -79,6 +80,9 @@ func TestCheckIn(t *testing.T) {
 	serviceAccountID := "test-service-account"
 	projectID := "test-project"
 
+	t.Log("Starting TestCheckIn")
+	t.Logf("ServiceAccountID: %s, ProjectID: %s", serviceAccountID, projectID)
+
 	// Create a checked out service account
 	checkOut := &CheckOut{
 		IsAvailable:         false,
@@ -96,11 +100,35 @@ func TestCheckIn(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, storage.Put(ctx, keyEntry))
 
+	// Simulate the configuration storage entry
+	config := &openaiConfig{
+		AdminAPIKey: "test-admin-key",
+		APIEndpoint: "https://api.openai.com",
+	}
+	configEntry, err := logical.StorageEntryJSON(configPath, config)
+	require.NoError(t, err)
+	require.NoError(t, storage.Put(ctx, configEntry))
+
 	// Setup a mock client
-	mc := &mockClient{}
+	mc := &mockClient{
+		deleteAPIKeyFn: func(ctx context.Context, id string) error {
+			return nil // Simulate successful deletion
+		},
+		deleteServiceAccountFn: func(ctx context.Context, id string, projectID ...string) error {
+			return nil // Simulate successful deletion
+		},
+	}
 	b.client = mc
 
-	// Test check in
+	t.Log("MockClient setup complete")
+
+	// Test check in with nil context first
+	// nolint:staticcheck // Intentionally testing nil context behavior
+	err = b.CheckIn(nil, storage, serviceAccountID, projectID)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ctx must be provided")
+
+	// Test check in with valid context
 	err = b.CheckIn(ctx, storage, serviceAccountID, projectID)
 	assert.NoError(t, err)
 
@@ -113,10 +141,7 @@ func TestCheckIn(t *testing.T) {
 	// Verify the API key was deleted
 	assert.Equal(t, apiKeyID, mc.lastDeletedAPIKeyID)
 
-	// Test checkin with nil parameters
-	err = b.CheckIn(context.TODO(), storage, serviceAccountID, projectID)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "ctx must be provided")
+	// Test other nil parameters
 
 	err = b.CheckIn(ctx, nil, serviceAccountID, projectID)
 	assert.Error(t, err)
@@ -163,7 +188,8 @@ func TestLoadCheckOut(t *testing.T) {
 	assert.Equal(t, checkOut.CheckOutTime.Unix(), result.CheckOutTime.Unix())
 
 	// Test with nil parameters
-	result, err = b.LoadCheckOut(context.TODO(), storage, serviceAccountID)
+	//nolint:staticcheck // Intentionally testing nil context behavior
+	result, err = b.LoadCheckOut(nil, storage, serviceAccountID)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "ctx must be provided")
@@ -185,6 +211,15 @@ func TestDeleteCheckout(t *testing.T) {
 	ctx := context.Background()
 	serviceAccountID := "test-service-account"
 
+	// Simulate the configuration storage entry
+	config := &openaiConfig{
+		AdminAPIKey: "test-admin-key",
+		APIEndpoint: "https://api.openai.com",
+	}
+	configEntry, err := logical.StorageEntryJSON(configPath, config)
+	require.NoError(t, err)
+	require.NoError(t, storage.Put(ctx, configEntry))
+
 	// Create a checkout entry
 	checkOut := &CheckOut{
 		IsAvailable:         false,
@@ -201,6 +236,17 @@ func TestDeleteCheckout(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, storage.Put(ctx, keyEntry))
 
+	// Setup a mock client
+	mc := &mockClient{
+		deleteAPIKeyFn: func(ctx context.Context, id string) error {
+			return nil // Simulate successful deletion
+		},
+		deleteServiceAccountFn: func(ctx context.Context, id string, projectID ...string) error {
+			return nil // Simulate successful deletion
+		},
+	}
+	b.client = mc
+
 	// Test deleting the checkout
 	err = b.DeleteCheckout(ctx, storage, serviceAccountID)
 	assert.NoError(t, err)
@@ -216,6 +262,7 @@ func TestDeleteCheckout(t *testing.T) {
 	assert.Nil(t, apiKeyEntry)
 
 	// Test with nil parameters
+	//nolint:staticcheck // Intentionally testing nil context behavior
 	err = b.DeleteCheckout(nil, storage, serviceAccountID)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "ctx must be provided")
@@ -268,8 +315,28 @@ func TestStoreAndGetAPIKey(t *testing.T) {
 	serviceAccountID := "test-service-account"
 	apiKeyID := "test-api-key-id"
 
+	// Simulate the configuration storage entry
+	config := &openaiConfig{
+		AdminAPIKey: "test-admin-key",
+		APIEndpoint: "https://api.openai.com",
+	}
+	configEntry, err := logical.StorageEntryJSON(configPath, config)
+	require.NoError(t, err)
+	require.NoError(t, storage.Put(ctx, configEntry))
+
+	// Setup a mock client
+	mc := &mockClient{
+		deleteAPIKeyFn: func(ctx context.Context, id string) error {
+			return nil // Simulate successful deletion
+		},
+		deleteServiceAccountFn: func(ctx context.Context, id string, projectID ...string) error {
+			return nil // Simulate successful deletion
+		},
+	}
+	b.client = mc
+
 	// Store API key
-	err := b.StoreAPIKey(ctx, storage, serviceAccountID, apiKeyID)
+	err = b.StoreAPIKey(ctx, storage, serviceAccountID, apiKeyID)
 	assert.NoError(t, err)
 
 	// Get API key
@@ -283,6 +350,7 @@ func TestStoreAndGetAPIKey(t *testing.T) {
 	assert.Empty(t, retrievedKeyID)
 
 	// Test with nil parameters for StoreAPIKey
+	//nolint:staticcheck // Intentionally testing nil context behavior
 	err = b.StoreAPIKey(nil, storage, serviceAccountID, apiKeyID)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "ctx must be provided")
@@ -300,6 +368,7 @@ func TestStoreAndGetAPIKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "API key ID must be provided")
 
 	// Test with nil parameters for GetAPIKey
+	// nolint:staticcheck // Intentionally testing nil context behavior
 	retrievedKeyID, err = b.GetAPIKey(nil, storage, serviceAccountID)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "ctx must be provided")

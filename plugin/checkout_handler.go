@@ -39,7 +39,7 @@ type CheckOut struct {
 // errNotFound.
 func (b *backend) CheckOut(ctx context.Context, storage logical.Storage, serviceAccountID string, checkOut *CheckOut) error {
 	if ctx == nil {
-		return errors.New("ctx must be provided")
+		return errors.New("context must be provided")
 	}
 	if storage == nil {
 		return errors.New("storage must be provided")
