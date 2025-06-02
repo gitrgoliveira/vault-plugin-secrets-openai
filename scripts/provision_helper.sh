@@ -2,10 +2,7 @@
 # Helper script to test the vault-plugin-secrets-openai plugin inside the Vagrant VM
 set -e
 
-cd $HOME/vault-plugin-secrets-openai
-
-echo "Building plugin..."
-make build
+# cd $HOME/vault-plugin-secrets-openai
 
 echo "Starting Vault server..."
 # Set environment variables for vault
@@ -15,23 +12,17 @@ export VAULT_LOG_LEVEL=debug
 
 # Start Vault in dev mode in the background
 nohup vault server -dev -dev-root-token-id=root > vault.log 2>&1 &
-VAULT_PID=$!
-echo "Waiting for Vault to initialize..."
-sleep 5
-
-echo "Calculating plugin SHA256..."
-SHA256=$(sha256sum bin/vault-plugin-secrets-openai | cut -d' ' -f1)
 
 echo "Building plugin Docker image..."
-docker build -t vault-plugin-secrets-openai:latest .
+make release VERSION=1.0.0
 
 echo "Getting Docker image SHA256..."
-PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:latest | cut -d: -f2)
+PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:1.0.0 | cut -d: -f2)
 
 echo "Registering plugin with Vault..."
 vault plugin register \
   -sha256="$PLUGIN_SHA256" \
-  -oci_image="vault-plugin-secrets-openai:latest" \
+  -oci_image="vault-plugin-secrets-openai:1.0.0" \
   secret vault-plugin-secrets-openai
 
 echo "Enabling plugin..."

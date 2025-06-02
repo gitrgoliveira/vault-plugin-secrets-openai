@@ -20,6 +20,11 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
 
+build-release:
+	@echo "Building release version of $(PLUGIN_NAME)..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
+
 clean:
 	@echo "Cleaning up..."
 	rm -rf $(BUILD_DIR)
@@ -95,3 +100,13 @@ dev-setup: register enable
 	@echo "Development setup complete."
 	@echo "Configure the secrets engine with:"
 	@echo "vault write openai/config admin_api_key=<api-key> organization_id=<org-id>"
+
+# Release: Tag, build, and push a release
+release:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION variable is required. Usage: make release VERSION=x.y.z"; \
+		exit 1; \
+	fi
+	@echo "Building Docker image..."
+	docker build -t vault-plugin-secrets-openai:$(VERSION) .
+	@echo "Release v$(VERSION) of Docker image built."
