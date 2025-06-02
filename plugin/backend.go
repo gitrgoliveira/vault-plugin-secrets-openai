@@ -5,6 +5,7 @@ package openaisecrets
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -26,12 +27,18 @@ type ClientAPI interface {
 	SetConfig(config *Config) error
 	ListServiceAccounts(ctx context.Context, projectID string) ([]*ServiceAccount, error)
 	GetServiceAccount(ctx context.Context, serviceAccountID, projectID string) (*ServiceAccount, error)
+	ValidateProject(ctx context.Context, projectID string) error
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
 	b := Backend()
 	if err := b.Setup(ctx, conf); err != nil {
 		return nil, err
+	}
+
+	// Setup admin key rotation
+	if err := b.setupAdminKeyRotation(ctx, conf.StorageView); err != nil {
+		return nil, fmt.Errorf("failed to setup admin key rotation: %w", err)
 	}
 
 	return b, nil
@@ -87,6 +94,12 @@ func Backend() *backend {
 	}
 
 	return b
+}
+
+func (b *backend) Setup(ctx context.Context, conf *logical.BackendConfig) error {
+	// Append custom paths to the existing backend paths
+	b.Backend.Paths = append(b.Backend.Paths, b.paths()...)
+	return nil
 }
 
 func (b *backend) initialize(ctx context.Context, initRequest *logical.InitializationRequest) error {

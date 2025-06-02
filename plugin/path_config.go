@@ -382,7 +382,13 @@ func (b *backend) pathProjectWrite(ctx context.Context, req *logical.Request, da
 		return logical.ErrorResponse("OpenAI client not configured"), nil
 	}
 
-	// TODO: Add validation of the project ID if the OpenAI API supports it
+	// Validate the project ID if the client is available
+	if b.client != nil {
+		err := b.client.ValidateProject(ctx, projectID)
+		if err != nil {
+			return logical.ErrorResponse("project_id validation failed: %s", err), nil
+		}
+	}
 
 	entry, err := logical.StorageEntryJSON(projectStoragePath(name), project)
 	if err != nil {
@@ -466,8 +472,46 @@ func (b *backend) getProject(ctx context.Context, s logical.Storage, name string
 
 // listRolesForProject returns a list of roles that use this project
 func (b *backend) listRolesForProject(ctx context.Context, s logical.Storage, projectName string) ([]string, error) {
-	// TODO: Implement this function to check if any roles use this project
-	return []string{}, nil
+	// First, get the project to find its project ID
+	project, err := b.getProject(ctx, s, projectName)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving project %q: %w", projectName, err)
+	}
+
+	if project == nil {
+		// Project doesn't exist, so no roles can be using it
+		return []string{}, nil
+	}
+
+	// Get the project ID which is what's stored in the roles
+	projectID := project.ProjectID
+
+	// List all static roles
+	rolesList, err := s.List(ctx, "static-roles/")
+	if err != nil {
+		return nil, fmt.Errorf("error listing roles: %w", err)
+	}
+
+	// Check each role to see if it uses this project's ID
+	var result []string
+	for _, roleName := range rolesList {
+		role, err := b.getStaticRole(ctx, s, roleName)
+		if err != nil {
+			return nil, fmt.Errorf("error checking role %s: %w", roleName, err)
+		}
+
+		// Skip if we couldn't load the role
+		if role == nil {
+			continue
+		}
+
+		// Add to result if project ID matches
+		if role.ProjectID == projectID {
+			result = append(result, roleName)
+		}
+	}
+
+	return result, nil
 }
 
 const confHelpSyn = `

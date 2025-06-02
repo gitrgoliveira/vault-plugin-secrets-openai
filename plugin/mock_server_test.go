@@ -82,7 +82,7 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 	// Match URL patterns and dispatch to appropriate handler
 	serviceAccountsPattern := regexp.MustCompile(`/v1/projects/([^/]+)/service_accounts(?:/([^/]+))?`)
 	apiKeysPattern := regexp.MustCompile(`/v1/api_keys(?:/([^/]+))?`)
-	adminApiKeysPattern := regexp.MustCompile(`/v1/admin_api_keys(?:/([^/]+))?`)
+	adminAPIKeysPattern := regexp.MustCompile(`/v1/admin_api_keys(?:/([^/]+))?`)
 
 	if matches := serviceAccountsPattern.FindStringSubmatch(r.URL.Path); matches != nil {
 		projectID := matches[1]
@@ -139,7 +139,7 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if matches := adminApiKeysPattern.FindStringSubmatch(r.URL.Path); matches != nil {
+	if matches := adminAPIKeysPattern.FindStringSubmatch(r.URL.Path); matches != nil {
 		keyID := ""
 		if len(matches) > 1 {
 			keyID = matches[1]

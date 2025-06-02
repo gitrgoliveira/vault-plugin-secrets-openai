@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	// adminKeyRotationPath is where we store the admin key rotation queue
-	// This is currently unused but kept for future implementation
+	// adminKeyRotationPath is where the admin key rotation API endpoint will be mounted
+	// when using the automated rotation framework
 	adminKeyRotationPath = "admin-key-rotation"
 )
 
@@ -226,16 +226,20 @@ func (b *backend) addToKeyRotationQueue(item *queue.Item) error {
 
 // adminKeyRotationHandler is the rotation handler for the admin API key (for automatedrotationutil)
 // This is reserved for future use with the automated rotation framework
-func (b *backend) adminKeyRotationHandler(ctx context.Context, req *logical.Request) error {
+func (b *backend) adminKeyRotationHandler(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	b.Logger().Info("Automated admin API key rotation triggered by rotation framework")
 	rotated, err := b.rotateAdminAPIKey(ctx, req.Storage)
 	if err != nil {
-		return fmt.Errorf("failed to rotate admin API key: %w", err)
+		return logical.ErrorResponse("failed to rotate admin API key: %s", err), nil
 	}
 	if !rotated {
-		return fmt.Errorf("admin API key rotation did not complete (no key configured)")
+		return logical.ErrorResponse("admin API key rotation did not complete (no key configured)"), nil
 	}
-	return nil
+	return &logical.Response{
+		Data: map[string]interface{}{
+			"success": true,
+		},
+	}, nil
 }
 
 // checkAdminKeyRotation verifies if the admin key needs immediate rotation
@@ -292,4 +296,32 @@ func (b *backend) checkAdminKeyRotation(ctx context.Context, storage logical.Sto
 	}
 
 	return nil
+}
+
+// paths returns the list of paths for the backend
+func (b *backend) paths() []*framework.Path {
+	return []*framework.Path{
+		{
+			Pattern: adminKeyRotationPath + "/?$",
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.UpdateOperation: &framework.PathOperation{
+					Callback: b.adminKeyRotationHandler,
+					Summary:  "Rotate the admin API key",
+				},
+			},
+			HelpSynopsis:    "Rotate the admin API key",
+			HelpDescription: "Triggers rotation of the admin API key",
+		},
+		{
+			Pattern: "config/rotate/?$",
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.UpdateOperation: &framework.PathOperation{
+					Callback: b.pathConfigRotate,
+					Summary:  "Manual rotation of the admin API key",
+				},
+			},
+			HelpSynopsis:    "Manual rotation of the admin API key",
+			HelpDescription: "Triggers a manual rotation of the admin API key",
+		},
+	}
 }

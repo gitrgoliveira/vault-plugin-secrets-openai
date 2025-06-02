@@ -67,14 +67,14 @@ func (b *backend) setupAdminKeyRotation(ctx context.Context, storage logical.Sto
 		}
 
 		// Configure the rotation job with period
-		rotationJobReq := &rotation.RotationJobConfigureRequest{
+		rotationJobReqPeriodic := &rotation.RotationJobConfigureRequest{
 			Name:           adminKeyRotationName,
 			MountPoint:     rotationPrefix,
 			ReqPath:        configPath,
 			RotationPeriod: rotationPeriod,
 		}
 
-		_, configErr = rotation.ConfigureRotationJob(rotationJobReq)
+		_, configErr = rotation.ConfigureRotationJob(rotationJobReqPeriodic)
 	} else {
 		// For legacy rotation, use the queue-based approach
 		if config.RotationDuration > 0 {
@@ -90,47 +90,6 @@ func (b *backend) setupAdminKeyRotation(ctx context.Context, storage logical.Sto
 		return fmt.Errorf("failed to configure rotation job: %w", configErr)
 	}
 
-	// Register the rotation job with the rotation manager (not available in this SDK version)
-	b.Logger().Warn("Automated rotation registration is not available in this Vault SDK version; falling back to legacy rotation if enabled.")
-	if config.RotationDuration > 0 {
-		return b.scheduleAdminKeyRotation(ctx, storage)
-	}
-	return nil
-}
-
-// handleRotation is the rotation handler called by the rotation manager
-// This is reserved for future use with the automated rotation framework
-func (b *backend) handleRotation(ctx context.Context, req *logical.Request) error {
-	b.Logger().Info("Automated admin API key rotation triggered by rotation manager")
-
-	rotated, err := b.rotateAdminAPIKey(ctx, req.Storage)
-	if err != nil {
-		return fmt.Errorf("failed to rotate admin API key: %w", err)
-	}
-
-	if !rotated {
-		return fmt.Errorf("admin API key rotation did not complete (no key configured)")
-	}
-
-	// Update the next rotation time in the configuration
-	config, err := getConfig(ctx, req.Storage)
-	if err != nil {
-		return fmt.Errorf("failed to get config after rotation: %w", err)
-	}
-
-	// Update LastRotatedTime to now
-	config.LastRotatedTime = time.Now()
-
-	// Save the updated configuration
-	entry, err := logical.StorageEntryJSON(configPath, config)
-	if err != nil {
-		return fmt.Errorf("failed to encode config after rotation: %w", err)
-	}
-
-	if err := req.Storage.Put(ctx, entry); err != nil {
-		return fmt.Errorf("failed to save config after rotation: %w", err)
-	}
-
-	b.Logger().Info("Admin API key rotation completed successfully")
+	b.Logger().Info("Admin API key rotation configuration complete")
 	return nil
 }

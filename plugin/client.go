@@ -492,3 +492,15 @@ func (c *Client) TestConnection(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ValidateProject checks if the given project ID is valid by attempting to list service accounts for the project.
+func (c *Client) ValidateProject(ctx context.Context, projectID string) error {
+	if projectID == "" {
+		return fmt.Errorf("project_id is required")
+	}
+	_, err := c.ListServiceAccounts(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("OpenAI project validation failed: %w", err)
+	}
+	return nil
+}
