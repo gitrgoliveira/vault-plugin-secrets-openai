@@ -15,11 +15,6 @@ import (
 const (
 	// Static roles storage path
 	staticRolePath = "static-roles"
-
-	// Static credentials storage path
-	// Reserved for future implementation
-	// nolint:unused
-	staticCredsPath = "static-creds"
 )
 
 // staticRoleEntry contains configuration for a static role

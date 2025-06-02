@@ -100,7 +100,6 @@ func (b *backend) setupAdminKeyRotation(ctx context.Context, storage logical.Sto
 
 // handleRotation is the rotation handler called by the rotation manager
 // This is reserved for future use with the automated rotation framework
-// nolint:unused
 func (b *backend) handleRotation(ctx context.Context, req *logical.Request) error {
 	b.Logger().Info("Automated admin API key rotation triggered by rotation manager")
 

@@ -263,10 +263,3 @@ func (b *backend) emitCredentialRevokedMetric(role string) {
 func (b *backend) emitAPIErrorMetric(endpoint, code string) {
 	IncrCounterWithLabels(context.Background(), []string{"openai", "api", "error"}, 1, []Label{{Name: "endpoint", Value: endpoint}, {Name: "code", Value: code}})
 }
-
-// Emit a metric when quota is used
-// Reserved for future implementation of quota tracking
-// nolint:unused
-func (b *backend) emitQuotaUsedMetric(project string, amount int) {
-	IncrCounterWithLabels(context.Background(), []string{"openai", "quota", "used"}, float32(amount), []Label{{Name: "project", Value: project}})
-}

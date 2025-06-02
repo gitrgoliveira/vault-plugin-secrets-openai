@@ -16,7 +16,6 @@ import (
 const (
 	// adminKeyRotationPath is where we store the admin key rotation queue
 	// This is currently unused but kept for future implementation
-	// nolint:unused
 	adminKeyRotationPath = "admin-key-rotation"
 )
 
@@ -227,7 +226,6 @@ func (b *backend) addToKeyRotationQueue(item *queue.Item) error {
 
 // adminKeyRotationHandler is the rotation handler for the admin API key (for automatedrotationutil)
 // This is reserved for future use with the automated rotation framework
-// nolint:unused
 func (b *backend) adminKeyRotationHandler(ctx context.Context, req *logical.Request) error {
 	b.Logger().Info("Automated admin API key rotation triggered by rotation framework")
 	rotated, err := b.rotateAdminAPIKey(ctx, req.Storage)
