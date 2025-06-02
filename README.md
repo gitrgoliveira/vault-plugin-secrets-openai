@@ -265,6 +265,157 @@ Template variables available for `service_account_name_template`:
 
 This section provides detailed information about the OpenAI Secrets plugin's API endpoints and how to use them.
 
+### Configuration API
+
+The Configuration API allows you to configure the plugin with your OpenAI Admin API credentials and manage rotation settings.
+
+#### Configure the Plugin
+
+```
+POST /openai/config
+GET /openai/config
+```
+
+Parameters:
+- `admin_api_key` - (Required for POST/PUT) Admin API key for OpenAI
+- `organization_id` - (Required for POST/PUT) Organization ID for OpenAI
+- `api_endpoint` - (Optional) URL for the OpenAI API (default: https://api.openai.com/v1)
+- `rotation_period` - (Optional) Legacy rotation period in seconds
+- `automatic_rotation_period` - (Optional) Period in seconds between automatic rotations
+- `automatic_rotation_window` - (Optional) Window in seconds during which rotation can occur
+
+Example Create/Update:
+```shell
+vault write openai/config \
+  admin_api_key="sk-admin-..." \
+  organization_id="org-123456" \
+  automatic_rotation_period=604800
+```
+
+Example Read:
+```shell
+vault read openai/config
+```
+
+Output:
+```
+Key                        Value
+---                        -----
+api_endpoint               https://api.openai.com/v1
+automatic_rotation_period  604800
+last_rotated               2025-06-01T12:00:00Z
+organization_id            org-123456
+```
+
+Note: The admin API key is not returned in the read response for security reasons.
+
+#### Rotate Admin API Key
+
+```
+POST /openai/config/rotate
+```
+
+Example:
+```shell
+vault write -f openai/config/rotate
+```
+
+Response:
+```
+Success! Admin API key has been rotated.
+```
+
+#### Trigger Automated Admin Key Rotation
+
+```
+POST /openai/admin-key-rotation
+```
+
+Example:
+```shell
+vault write -f openai/admin-key-rotation
+```
+
+Response:
+```
+Key       Value
+---       -----
+success   true
+```
+
+### Project API
+
+The Project API allows you to manage OpenAI projects that can be referenced by roles and library sets.
+
+#### Create or Update a Project
+
+```
+POST /openai/project/:name
+```
+
+Parameters:
+- `project_id` - (Required) The ID of the OpenAI project
+- `description` - (Optional) Description of the project
+
+Example:
+```shell
+vault write openai/project/research \
+  project_id="proj_abc123" \
+  description="Research team OpenAI project"
+```
+
+#### Read a Project
+
+```
+GET /openai/project/:name
+```
+
+Example:
+```shell
+vault read openai/project/research
+```
+
+Output:
+```
+Key          Value
+---          -----
+description  Research team OpenAI project
+project_id   proj_abc123
+```
+
+#### List Projects
+
+```
+GET /openai/project
+```
+
+Example:
+```shell
+vault list openai/project
+```
+
+Output:
+```
+Keys
+----
+development
+production
+research
+```
+
+#### Delete a Project
+
+```
+DELETE /openai/project/:name
+```
+
+Example:
+```shell
+vault delete openai/project/research
+```
+
+Note: You cannot delete a project that is currently in use by roles.
+
 ### Dynamic Credentials API
 
 Dynamic credentials are created on-demand for a specific TTL and automatically cleaned up when the lease expires.
@@ -373,15 +524,59 @@ POST /openai/static-roles/:name
 
 Parameters:
 - `service_account_id` - (Required) ID of existing service account
-- `project_id` - (Required) ID of project the service account belongs to
+- `project` - (Required) Name of the project the service account belongs to
+- `api_key_name` - (Optional) Name for the API key (default: "vault-static-key")
 - `rotation_period` - (Optional) How often to rotate the key (default: 24h)
+- `ttl` - (Optional) TTL for API keys (default: 24h)
 
 Example:
 ```shell
 vault write openai/static-roles/data-science \
   service_account_id="svc_abcdef123456" \
-  project_id="proj_123456789" \
+  project="research-project" \
   rotation_period=48h
+```
+
+#### List Static Roles
+
+```
+GET /openai/static-roles
+```
+
+Example:
+```shell
+vault list openai/static-roles
+```
+
+Output:
+```
+Keys
+----
+data-science
+ml-experiments
+production
+```
+
+#### Read Static Role
+
+```
+GET /openai/static-roles/:name
+```
+
+Example:
+```shell
+vault read openai/static-roles/data-science
+```
+
+Output:
+```
+Key                Value
+---                -----
+api_key_name       vault-static-key
+project            research-project
+rotation_period    48h
+service_account_id svc_abcdef123456
+ttl                24h
 ```
 
 #### Read Static Credentials
@@ -428,9 +623,42 @@ api_key             sk-fghijk098765
 api_key_id          api_key_123098765
 ```
 
+#### Delete a Static Role
+
+```
+DELETE /openai/static-roles/:name
+```
+
+Example:
+```shell
+vault delete openai/static-roles/data-science
+```
+
+Note: When a static role is deleted, the associated API key is revoked from the service account.
+
 ### Check-In/Check-Out API
 
-The check-in/check-out system provides a way to share a pool of service accounts with API keys.
+The check-in/check-out system provides a way to share a pool of service accounts with API keys. This is particularly useful for scenarios where you need to limit concurrent access to services or share a fixed set of service accounts among multiple clients.
+
+#### List Library Sets
+
+```
+GET /openai/library-sets
+```
+
+Example:
+```shell
+vault list openai/library-sets
+```
+
+Output:
+```
+Keys
+----
+development
+production
+research
+```
 
 #### Create a Library Set
 
@@ -442,19 +670,42 @@ Parameters:
 - `project` - (Required) Name of the project to use
 - `service_account_names` - (Required) Comma-separated list of service accounts
 - `max_ttl` - (Optional) Maximum checkout duration (default: 24h)
+- `description` - (Optional) Description of the library set
 
 Example:
 ```shell
 vault write openai/library-sets/research \
   project="research-team" \
   service_account_names="research-sa-1,research-sa-2,research-sa-3" \
-  max_ttl=48h
+  max_ttl=48h \
+  description="Research team shared service accounts"
+```
+
+#### Read Library Set Configuration
+
+```
+GET /openai/library-sets/:name
+```
+
+Example:
+```shell
+vault read openai/library-sets/research
+```
+
+Output:
+```
+Key                    Value
+---                    -----
+description            Research team shared service accounts
+max_ttl                48h
+project                research-team
+service_account_names  [research-sa-1 research-sa-2 research-sa-3]
 ```
 
 #### Check Out a Service Account
 
 ```
-POST /openai/library-sets/:name/checkout
+POST /openai/library-sets/:name/check-out
 ```
 
 Parameters:
@@ -462,7 +713,7 @@ Parameters:
 
 Example:
 ```shell
-vault write openai/library-sets/research/checkout ttl=4h
+vault write openai/library-sets/research/check-out ttl=4h
 ```
 
 Response:
@@ -482,7 +733,7 @@ checkout_time       2025-06-01T14:30:00Z
 #### Check In a Service Account
 
 ```
-POST /openai/library-sets/:name/checkin
+POST /openai/library-sets/:name/check-in
 ```
 
 Parameters:
@@ -490,7 +741,7 @@ Parameters:
 
 Example:
 ```shell
-vault write openai/library-sets/research/checkin \
+vault write openai/library-sets/research/check-in \
   service_account_id="svc_234567890"
 ```
 
@@ -499,7 +750,7 @@ Response:
 Success! Service account checked in and API key rotated.
 ```
 
-#### List Available Service Accounts
+#### View Library Set Status
 
 ```
 GET /openai/library-sets/:name/status
@@ -524,7 +775,7 @@ project                  research-team
 #### Force Check-In (Admin Operation)
 
 ```
-POST /openai/library-sets/:name/admin-checkin
+POST /openai/library-sets/:name/admin-check-in
 ```
 
 Parameters:
@@ -532,7 +783,7 @@ Parameters:
 
 Example:
 ```shell
-vault write openai/library-sets/research/admin-checkin \
+vault write openai/library-sets/research/admin-check-in \
   service_account_id="svc_234567890"
 ```
 
@@ -540,6 +791,55 @@ Response:
 ```
 Success! Service account forcibly checked in and API key rotated.
 ```
+
+#### Delete a Library Set
+
+```
+DELETE /openai/library-sets/:name
+```
+
+Example:
+```shell
+vault delete openai/library-sets/research
+```
+
+Note: All service accounts must be checked in before a library set can be deleted. Use the admin-check-in endpoint if necessary.
+
+## API Endpoint Patterns
+
+The plugin's API endpoints follow a consistent pattern for resource management:
+
+### Configuration Endpoints
+- `openai/config` - Plugin configuration
+- `openai/config/rotate` - Rotate admin API key
+- `openai/admin-key-rotation` - Trigger automated rotation
+
+### Project Management Endpoints
+- `openai/project` - List projects
+- `openai/project/:name` - Manage specific project
+
+### Dynamic Credentials Endpoints
+- `openai/roles` - List dynamic roles
+- `openai/roles/:name` - Manage dynamic roles
+- `openai/creds/:role_name` - Generate dynamic credentials
+
+### Static Credentials Endpoints
+- `openai/static-roles` - List static roles
+- `openai/static-roles/:name` - Manage static roles
+- `openai/static-creds/:name` - Access static credentials
+- `openai/static-creds/:name/rotate` - Rotate static credentials
+
+### Library Management Endpoints
+- `openai/library-sets` - List library sets
+- `openai/library-sets/:name` - Manage library sets
+- `openai/library-sets/:name/check-out` - Check out service account
+- `openai/library-sets/:name/check-in` - Check in service account
+- `openai/library-sets/:name/status` - View library status
+- `openai/library-sets/:name/admin-check-in` - Force check in
+
+### Credential Flow Diagrams
+
+For detailed credential flow diagrams, see the [PROJECT_STATUS.md](PROJECT_STATUS.md) file.
 
 ## Development
 
@@ -781,6 +1081,87 @@ When you're done testing:
 ```shell
 vagrant destroy
 ```
+
+## Troubleshooting Guide
+
+### Common Issues
+
+#### Configuration Issues
+
+**Error: "OpenAI client not configured"**
+- **Cause**: The plugin hasn't been properly configured with an Admin API key.
+- **Solution**: Ensure you've configured the plugin with `vault write openai/config admin_api_key="..." organization_id="..."`.
+
+**Error: "error validating OpenAI configuration"**
+- **Cause**: The provided Admin API key or organization ID is invalid.
+- **Solution**: Verify your credentials and ensure they have the proper permissions.
+
+#### Project Issues
+
+**Error: "project has roles that use it, cannot delete"**
+- **Cause**: You're attempting to delete a project that is still referenced by roles.
+- **Solution**: Delete the roles that reference this project first, or update them to use a different project.
+
+**Error: "project not found"**
+- **Cause**: The project name used in a role doesn't exist.
+- **Solution**: Verify the project name and ensure it's been created with `vault write openai/project/...`.
+
+#### Dynamic Credentials Issues
+
+**Error: "service account creation failed"**
+- **Cause**: The OpenAI API returned an error when trying to create a service account.
+- **Solution**: Check the OpenAI service limits and ensure your Admin API key has the permissions to create service accounts.
+
+**Error: "API key creation failed"**
+- **Cause**: The OpenAI API returned an error when trying to create an API key.
+- **Solution**: Check the OpenAI service limits and ensure your Admin API key has the permissions to create API keys.
+
+#### Check-Out/Check-In Issues
+
+**Error: "no available service accounts in library"**
+- **Cause**: All service accounts in the library set are currently checked out.
+- **Solution**: Wait for a service account to be checked in or use `admin-check-in` to force a check-in.
+
+**Error: "service account is already checked out"**
+- **Cause**: You're trying to check out a service account that's already checked out.
+- **Solution**: Choose a different service account or wait until the current one is checked in.
+
+### Debugging
+
+#### Enable Debug Logs
+
+To enable debug logs for the plugin:
+
+```shell
+vault secrets enable -path=openai -plugin-name=vault-plugin-secrets-openai -log-level=debug plugin
+```
+
+#### Check Vault Server Logs
+
+For containerized plugins, check the plugin logs:
+
+```shell
+docker logs vault-plugin-secrets-openai
+```
+
+#### Inspect API Key Permissions
+
+If operations are failing due to permission issues, verify the Admin API key has the following permissions:
+- Create project service accounts
+- Delete project service accounts
+- Create API keys
+- Delete API keys
+
+### Getting Help
+
+If you're experiencing issues not covered in this troubleshooting guide:
+
+1. Check the [GitHub repository issues](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/issues) for similar problems
+2. Create a new issue with:
+   - A detailed description of the problem
+   - Steps to reproduce
+   - Plugin and Vault version information
+   - Any relevant error messages (redact sensitive information)
 
 ## License
 
