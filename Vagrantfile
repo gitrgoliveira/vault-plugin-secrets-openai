@@ -34,22 +34,36 @@ Vagrant.configure("2") do |config|
     apt-get update
     apt-get install -y vault docker-ce docker-ce-cli containerd.io make jq unzip golang-go git
 
+    # Upgrade Go to 1.24.3 if not already installed
+    GO_VERSION="1.24.3"
+    if ! go version 2>/dev/null | grep -q "go$GO_VERSION"; then
+      echo "Upgrading Go to $GO_VERSION..."
+      wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+      sudo rm -rf /usr/local/go
+      sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
+      rm go${GO_VERSION}.linux-amd64.tar.gz
+      export PATH=$PATH:/usr/local/go/bin
+      echo 'export PATH=$PATH:/usr/local/go/bin' >> /home/vagrant/.bashrc
+    fi
+    go version
+
     # Enable docker socket access for vagrant user
     usermod -aG docker vagrant
     systemctl enable docker
     systemctl start docker
 
-    # Install gVisor/runsc for containerized plugins
-    # From: https://gvisor.dev/docs/user_guide/install/
-    (
-      set -e
-      URL=https://storage.googleapis.com/gvisor/releases/release/latest
-      wget ${URL}/runsc ${URL}/runsc.sha512 ${URL}/containerd-shim-runsc-v1 ${URL}/containerd-shim-runsc-v1.sha512
-      sha512sum -c runsc.sha512 -c containerd-shim-runsc-v1.sha512
-      rm -f *.sha512
-      chmod a+rx runsc containerd-shim-runsc-v1
-      sudo mv runsc containerd-shim-runsc-v1 /usr/local/bin
-    )
+    # Install gVisor/runsc for containerized plugins if not already installed
+    if ! command -v runsc >/dev/null 2>&1; then
+      (
+        set -e
+        URL=https://storage.googleapis.com/gvisor/releases/release/latest
+        wget ${URL}/runsc ${URL}/runsc.sha512 ${URL}/containerd-shim-runsc-v1 ${URL}/containerd-shim-runsc-v1.sha512
+        sha512sum -c runsc.sha512 -c containerd-shim-runsc-v1.sha512
+        rm -f *.sha512
+        chmod a+rx runsc containerd-shim-runsc-v1
+        sudo mv runsc containerd-shim-runsc-v1 /usr/local/bin
+      )
+    fi
 
     # Configure Docker to use gVisor/runsc runtime
     cat <<EOF | sudo tee /etc/docker/daemon.json
