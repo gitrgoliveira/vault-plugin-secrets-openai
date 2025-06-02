@@ -11,9 +11,9 @@ ifeq ($(GOOS), darwin)
 	HASH_CMD = shasum -a 256
 endif
 
-.PHONY: all build clean test test-integration fmt vet check-fmt
+.PHONY: all build clean test test-integration fmt vet check-fmt lint staticcheck
 
-all: check-fmt test build
+all: check-fmt test lint staticcheck-ci build
 
 build:
 	@echo "Building $(PLUGIN_NAME)..."
@@ -43,6 +43,28 @@ vet:
 check-fmt:
 	@echo "Checking format..."
 	@test -z $(shell gofmt -l .)
+
+lint:
+	@echo "Linting code..."
+	go vet ./...
+	go mod tidy
+
+lint-strict: lint
+	@echo "Running strict linting checks..."
+	@echo "(Use 'make lint' for basic linting only)"
+
+staticcheck:
+	@echo "Running staticcheck..."
+	staticcheck -f stylish -checks "all,-SA1012" ./...
+
+staticcheck-strict: staticcheck
+	@echo "Running strict staticcheck (including package documentation)..."
+	staticcheck -f stylish ./...
+
+# A more lenient version of staticcheck that ignores common warnings
+staticcheck-ci:
+	@echo "Running CI version of staticcheck (ignoring common issues)..."
+	staticcheck -f stylish -checks "all,-SA1012,-ST1000" ./...
 
 # Generate the plugin SHA
 sha256:
