@@ -108,5 +108,5 @@ release:
 		exit 1; \
 	fi
 	@echo "Building Docker image..."
-	docker build -t vault-plugin-secrets-openai:$(VERSION) .
+	DOCKER_BUILDKIT=1 docker build -t vault-plugin-secrets-openai:$(VERSION) .
 	@echo "Release v$(VERSION) of Docker image built."
