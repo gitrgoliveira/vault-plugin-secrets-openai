@@ -285,21 +285,15 @@ func (c *CleanupManager) getActiveLeases(ctx context.Context, projectID string) 
 	return leases, nil
 }
 
-// getLeaseIDsForRole gets all lease IDs for a specific role
+// getLeaseIDsForRole gets all lease IDs for a specific role using Vault's lease storage pattern
 func (c *CleanupManager) getLeaseIDsForRole(ctx context.Context, roleName string, storage logical.Storage) ([]string, error) {
-	// This is a simplified approach - in a real implementation, we'd need to:
-	// 1. Leverage Vault's lease system more directly
-	// 2. Implement proper lease tracking within the plugin
-	// 3. Consider using the sys/leases endpoints for more comprehensive lease management
-
-	// For now, we'll assume a simple storage structure where leases are stored at:
-	// "leases/roles/<role_name>/<lease_id>"
-	leasePath := "leases/roles/" + roleName + "/"
+	// Reference: Vault LDAP plugin uses 'lease/' prefix for lease tracking
+	// Leases are stored at: "lease/openai/creds/<role_name>/<lease_id>"
+	leasePath := "lease/openai/creds/" + roleName + "/"
 	leaseIDs, err := storage.List(ctx, leasePath)
 	if err != nil {
 		return nil, fmt.Errorf("error listing leases for role %s: %w", roleName, err)
 	}
-
 	return leaseIDs, nil
 }
 
