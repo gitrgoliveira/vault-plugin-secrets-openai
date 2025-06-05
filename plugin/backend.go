@@ -5,7 +5,6 @@ package openaisecrets
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -36,11 +35,6 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 		return nil, err
 	}
 
-	// Setup admin key rotation
-	if err := b.setupAdminKeyRotation(ctx, conf.StorageView); err != nil {
-		return nil, fmt.Errorf("failed to setup admin key rotation: %w", err)
-	}
-
 	return b, nil
 }
 
@@ -61,32 +55,27 @@ func Backend() *backend {
 			},
 			SealWrapStorage: []string{
 				configPath,
+				staticRolePath + "*",
+				// Add any other sensitive storage paths here
 			},
 		},
 		Paths: framework.PathAppend(
-			// Configuration paths
 			b.pathAdminConfig(),
 			b.pathProjectConfig(),
-
-			// Dynamic credential paths
 			b.pathDynamicSvcAccount(),
 			b.pathDynamicCredsCreate(),
-
-			// Static credential paths
 			b.pathStaticRoles(),
-
-			// Library and check-in/check-out paths
 			b.pathListSets(),
 			b.pathSets(),
 			b.pathSetCheckOut(),
 			b.pathSetCheckIn(),
 			b.pathSetManageCheckIn(),
 			b.pathSetStatus(),
+			b.paths(), // Add any additional paths (e.g., admin key rotation)
 		),
 		InitializeFunc: b.initialize,
 		Secrets: []*framework.Secret{
 			dynamicSecretCreds(b),
-			// Static credentials don't generate secrets as they are persistent
 			checkoutSecretCreds(b),
 		},
 		Clean:       b.clean,

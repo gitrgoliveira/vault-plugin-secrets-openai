@@ -95,7 +95,7 @@ func (b *backend) pathStaticRoles() []*framework.Path {
 					Summary:  "Delete a static role.",
 				},
 			},
-			ExistenceCheck:  b.pathStaticRoleExistenceCheck,
+			ExistenceCheck:  existenceCheckForNamedPath("name", func(name string) string { return staticRolePath + "/" + name }),
 			HelpSynopsis:    "Manage static roles",
 			HelpDescription: "Create, update, read, and delete static roles.",
 		},
@@ -312,12 +312,57 @@ func (b *backend) pathStaticRoleDelete(ctx context.Context, req *logical.Request
 		return nil, nil
 	}
 
+	// Revoke the API key from OpenAI if present
+	if b.client != nil && role.APIKey != "" {
+		// Attempt to delete the API key
+		err := b.client.DeleteAPIKey(ctx, role.APIKey)
+		if err != nil {
+			b.Logger().Warn("failed to revoke API key during static role deletion", "role", name, "api_key", role.APIKey, "error", err)
+			return logical.ErrorResponse("failed to revoke API key from OpenAI: %s", err), nil
+		}
+	}
+
+	// TODO: Clean up any additional related storage if needed (e.g., API key mappings)
+
 	// Delete the role
 	if err := req.Storage.Delete(ctx, staticRolePath+"/"+name); err != nil {
 		return nil, err
 	}
 
 	return nil, nil
+}
+
+// staticSecretCreds creates a Secret type for static credentials
+func staticSecretCreds(b *backend) *framework.Secret {
+	return &framework.Secret{
+		Type: "openai_static_api_key",
+		Fields: map[string]*framework.FieldSchema{
+			"api_key": {
+				Type:        framework.TypeString,
+				Description: "OpenAI API key",
+			},
+			"service_account_id": {
+				Type:        framework.TypeString,
+				Description: "ID of the service account",
+			},
+			"project_id": {
+				Type:        framework.TypeString,
+				Description: "ID of the project",
+			},
+			"last_rotated": {
+				Type:        framework.TypeString,
+				Description: "Last rotation time (RFC3339)",
+			},
+			"ttl": {
+				Type:        framework.TypeInt,
+				Description: "TTL in seconds",
+			},
+			"rotation_period": {
+				Type:        framework.TypeInt,
+				Description: "Rotation period in seconds",
+			},
+		},
+	}
 }
 
 // pathStaticCredsRead reads credentials for a static role
@@ -337,18 +382,17 @@ func (b *backend) pathStaticCredsRead(ctx context.Context, req *logical.Request,
 		return logical.ErrorResponse("static role %q not found", name), nil
 	}
 
-	// Return the API key
-	resp := &logical.Response{
-		Data: map[string]interface{}{
-			"api_key":            role.APIKey,
-			"service_account_id": role.ServiceAccountID,
-			"project_id":         role.ProjectID,
-			"last_rotated":       role.LastRotatedTime.Format(time.RFC3339),
-			"ttl":                int64(role.TTL.Seconds()),
-			"rotation_period":    int64(role.RotationPeriod.Seconds()),
-		},
-	}
-
+	resp := staticSecretCreds(b).Response(map[string]interface{}{
+		"api_key":            role.APIKey,
+		"service_account_id": role.ServiceAccountID,
+		"project_id":         role.ProjectID,
+		"last_rotated":       role.LastRotatedTime.Format(time.RFC3339),
+		"ttl":                int64(role.TTL.Seconds()),
+		"rotation_period":    int64(role.RotationPeriod.Seconds()),
+	}, nil)
+	resp.Secret.TTL = role.TTL
+	resp.Secret.MaxTTL = role.TTL
+	resp.Secret.Renewable = false
 	return resp, nil
 }
 
@@ -374,7 +418,7 @@ func (b *backend) pathStaticCredsRotate(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse("OpenAI client not configured"), nil
 	}
 
-	// Create a new API key
+	// Create a new API key first
 	apiKey, err := b.client.CreateAPIKey(ctx, CreateAPIKeyRequest{
 		Name:         role.APIKeyName,
 		ServiceAccID: role.ServiceAccountID,
@@ -384,11 +428,11 @@ func (b *backend) pathStaticCredsRotate(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse("failed to create API key: %s", err), nil
 	}
 
-	// Update the role with the new API key
+	oldAPIKey := role.APIKey
 	role.APIKey = apiKey.Key
 	role.LastRotatedTime = time.Now()
 
-	// Save the updated role
+	// Save the updated role with the new key
 	entry, err := logical.StorageEntryJSON(staticRolePath+"/"+name, role)
 	if err != nil {
 		return nil, err
@@ -398,18 +442,26 @@ func (b *backend) pathStaticCredsRotate(ctx context.Context, req *logical.Reques
 		return nil, err
 	}
 
-	// Return the new API key
-	resp := &logical.Response{
-		Data: map[string]interface{}{
-			"api_key":            role.APIKey,
-			"service_account_id": role.ServiceAccountID,
-			"project_id":         role.ProjectID,
-			"last_rotated":       role.LastRotatedTime.Format(time.RFC3339),
-			"ttl":                int64(role.TTL.Seconds()),
-			"rotation_period":    int64(role.RotationPeriod.Seconds()),
-		},
+	// Now revoke the old API key if present
+	if oldAPIKey != "" {
+		err := b.client.DeleteAPIKey(ctx, oldAPIKey)
+		if err != nil {
+			b.Logger().Warn("failed to revoke old API key during static role rotation", "role", name, "api_key", oldAPIKey, "error", err)
+			return logical.ErrorResponse("failed to revoke old API key from OpenAI: %s", err), nil
+		}
 	}
 
+	resp := staticSecretCreds(b).Response(map[string]interface{}{
+		"api_key":            role.APIKey,
+		"service_account_id": role.ServiceAccountID,
+		"project_id":         role.ProjectID,
+		"last_rotated":       role.LastRotatedTime.Format(time.RFC3339),
+		"ttl":                int64(role.TTL.Seconds()),
+		"rotation_period":    int64(role.RotationPeriod.Seconds()),
+	}, nil)
+	resp.Secret.TTL = role.TTL
+	resp.Secret.MaxTTL = role.TTL
+	resp.Secret.Renewable = false
 	return resp, nil
 }
 

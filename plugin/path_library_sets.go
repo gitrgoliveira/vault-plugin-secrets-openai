@@ -118,7 +118,7 @@ func (b *backend) pathListSets() []*framework.Path {
 func (b *backend) pathSets() []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: strings.TrimSuffix(libraryPrefix, "/") + genericNameWithForwardSlashRegex("name"),
+			Pattern: strings.TrimSuffix(libraryPrefix, "/") + framework.GenericNameRegex("name"),
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,
@@ -168,6 +168,7 @@ func (b *backend) pathSets() []*framework.Path {
 					Summary:  "Delete a library set.",
 				},
 			},
+			ExistenceCheck:  existenceCheckForNamedPath("name", func(name string) string { return setStoragePath + name }),
 			HelpSynopsis:    "Manage library sets.",
 			HelpDescription: "Create, read, update, and delete library sets.",
 		},
@@ -474,18 +475,19 @@ func (b *backend) operationSetDelete(ctx context.Context, req *logical.Request, 
 		return nil, nil
 	}
 
-	// Remove service accounts from managed list and delete checkout entries
+	// Register service accounts as managed
 	b.managedUserLock.Lock()
+	defer b.managedUserLock.Unlock()
+
 	for _, id := range set.ServiceAccountIDs {
 		delete(b.managedUsers, id)
 
 		// Delete checkout entry
 		if err := b.DeleteCheckout(ctx, req.Storage, id); err != nil {
-			b.Logger().Warn("failed to delete checkout entry for service account during set deletion",
+			b.Logger().Warn("failed to delete checkout entry for removed service account",
 				"service_account_id", id, "error", err)
 		}
 	}
-	b.managedUserLock.Unlock()
 
 	// Delete the set
 	if err := deleteSet(ctx, req.Storage, setName); err != nil {
@@ -493,9 +495,4 @@ func (b *backend) operationSetDelete(ctx context.Context, req *logical.Request, 
 	}
 
 	return nil, nil
-}
-
-// Helper functions for handling forward slashes in path patterns
-func genericNameWithForwardSlashRegex(name string) string {
-	return fmt.Sprintf("(?P<%s>.+)", name)
 }

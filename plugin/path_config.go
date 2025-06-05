@@ -94,6 +94,7 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 					Summary:  "Remove an existing OpenAI configuration.",
 				},
 			},
+			ExistenceCheck:  existenceCheckForPath(configPath),
 			HelpSynopsis:    confHelpSyn,
 			HelpDescription: confHelpDesc,
 		},
@@ -140,7 +141,7 @@ func (b *backend) pathProjectConfig() []*framework.Path {
 					Summary:  "Delete an OpenAI project configuration.",
 				},
 			},
-
+			ExistenceCheck:  existenceCheckForNamedPath("name", projectStoragePath),
 			HelpSynopsis:    projectHelpSyn,
 			HelpDescription: projectHelpDesc,
 		},
@@ -512,6 +513,32 @@ func (b *backend) listRolesForProject(ctx context.Context, s logical.Storage, pr
 	}
 
 	return result, nil
+}
+
+// Generic ExistenceCheck for a fixed storage path
+func existenceCheckForPath(path string) framework.ExistenceFunc {
+	return func(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
+		entry, err := req.Storage.Get(ctx, path)
+		if err != nil {
+			return false, err
+		}
+		return entry != nil, nil
+	}
+}
+
+// Generic ExistenceCheck for a named resource (e.g., project, role)
+func existenceCheckForNamedPath(nameField string, pathFunc func(string) string) framework.ExistenceFunc {
+	return func(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
+		name := data.Get(nameField).(string)
+		if name == "" {
+			return false, nil
+		}
+		entry, err := req.Storage.Get(ctx, pathFunc(name))
+		if err != nil {
+			return false, err
+		}
+		return entry != nil, nil
+	}
 }
 
 const confHelpSyn = `

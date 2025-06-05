@@ -39,7 +39,7 @@ func checkoutSecretCreds(b *backend) *framework.Secret {
 func (b *backend) pathSetCheckOut() []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: strings.TrimSuffix(libraryPrefix, "/") + genericNameWithForwardSlashRegex("name") + "/check-out$",
+			Pattern: strings.TrimSuffix(libraryPrefix, "/") + framework.GenericNameRegex("name") + "/check-out$",
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,
@@ -213,7 +213,7 @@ func (b *backend) operationSetCheckOut(ctx context.Context, req *logical.Request
 func (b *backend) pathSetCheckIn() []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: strings.TrimSuffix(libraryPrefix, "/") + genericNameWithForwardSlashRegex("name") + "/check-in$",
+			Pattern: strings.TrimSuffix(libraryPrefix, "/") + framework.GenericNameRegex("name") + "/check-in$",
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,
@@ -241,7 +241,7 @@ func (b *backend) pathSetCheckIn() []*framework.Path {
 func (b *backend) pathSetManageCheckIn() []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: strings.TrimSuffix(libraryManagePrefix, "/") + genericNameWithForwardSlashRegex("name") + "/check-in$",
+			Pattern: strings.TrimSuffix(libraryManagePrefix, "/") + framework.GenericNameRegex("name") + "/check-in$",
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,
@@ -351,7 +351,7 @@ func (b *backend) operationCheckIn(overrideCheckInEnforcement bool) framework.Op
 func (b *backend) pathSetStatus() []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: strings.TrimSuffix(libraryPrefix, "/") + genericNameWithForwardSlashRegex("name") + "/status$",
+			Pattern: strings.TrimSuffix(libraryPrefix, "/") + framework.GenericNameRegex("name") + "/status$",
 			Fields: map[string]*framework.FieldSchema{
 				"name": {
 					Type:        framework.TypeLowerCaseString,

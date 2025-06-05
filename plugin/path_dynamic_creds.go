@@ -72,6 +72,7 @@ func (b *backend) pathDynamicSvcAccount() []*framework.Path {
 				},
 			},
 
+			ExistenceCheck:  existenceCheckForNamedPath("name", roleStoragePath),
 			HelpSynopsis:    dynamicRoleHelpSyn,
 			HelpDescription: dynamicRoleHelpDesc,
 		},
