@@ -26,3 +26,4 @@ go.work.sum
 helper/metricsutil.go
 bin/vault-plugin-secrets-openai
 .vagrant/
+vault.log
