@@ -1,6 +1,6 @@
 # Vault OpenAI Secrets Plugin
 
-This HashiCorp Vault plugin enables dynamic management of OpenAI API keys using the OpenAI Admin API. Built with a standard HashiCorp plugin structure, it allows you to create project service accounts with API keys that have configurable TTLs and automatic cleanup.
+This HashiCorp Vault plugin enables dynamic management of OpenAI service accounts and their API keys using the OpenAI Admin API. Built with a standard HashiCorp plugin structure, it allows you to create project service accounts (with API keys) that have configurable TTLs and automatic cleanup.
 
 ## Table of Contents
 
@@ -22,9 +22,9 @@ This HashiCorp Vault plugin enables dynamic management of OpenAI API keys using 
 
 ## Features
 
-- **Dynamic API Keys**: Create OpenAI API keys with configurable TTLs for better security
+- **Dynamic Service Accounts**: Create OpenAI service accounts (with API keys) with configurable TTLs for better security
 - **Service Account Management**: Automatically create and clean up service accounts
-- **Key Checkout System**: Check-in/check-out mechanism for API key sharing and management
+- **Key Checkout System**: Check-in/check-out mechanism for service account sharing and management
 - **Admin API Key Rotation**: Securely rotate admin keys manually or on a schedule
 - **Metrics and Monitoring**: Track credential issuance, revocation, and API errors
 - **Containerized Deployment**: Run as a containerized Vault plugin with Docker
@@ -161,8 +161,8 @@ vault write openai/roles/my-role \
 
 The plugin supports three main credential management approaches:
 
-1. **Dynamic Credentials**: Create service accounts and API keys on-demand with automatic cleanup
-2. **Static Credentials**: Manage API keys for existing service accounts with rotation
+1. **Dynamic Credentials**: Create service accounts (with API keys) on-demand with automatic cleanup
+2. **Static Credentials**: Manage API keys for existing service accounts with rotation (API keys are only created by creating a new service account)
 3. **Check-in/Check-out**: Share a pool of service accounts among multiple clients
 
 ### Dynamic Credentials Workflow
@@ -176,7 +176,7 @@ vault write openai/roles/app-role \
   ttl=1h \
   max_ttl=24h
 
-# 2. Generate an API key when needed
+# 2. Generate a service account and API key when needed
 vault read openai/creds/app-role
 
 # 3. Optional: Request a custom TTL for this credential
@@ -198,7 +198,7 @@ service_account_id svc_abc123
 
 ### Static Credentials Workflow
 
-Static credentials work with existing service accounts and provide key rotation:
+Static credentials work with existing service accounts and provide key rotation (rotation is performed by creating a new service account and API key, not by creating a new API key for an existing account):
 
 ```shell
 # 1. Create a static role for an existing service account
@@ -210,7 +210,7 @@ vault write openai/static-roles/existing-sa \
 # 2. Retrieve the current API key
 vault read openai/static-creds/existing-sa
 
-# 3. Manually trigger rotation when needed
+# 3. Manually trigger rotation when needed (creates a new service account and API key)
 vault write -f openai/static-creds/existing-sa/rotate
 ```
 
@@ -1147,9 +1147,8 @@ docker logs vault-plugin-secrets-openai
 #### Inspect API Key Permissions
 
 If operations are failing due to permission issues, verify the Admin API key has the following permissions:
-- Create project service accounts
+- Create project service accounts (API keys are created with service accounts)
 - Delete project service accounts
-- Create API keys
 - Delete API keys
 
 ### Getting Help
