@@ -56,21 +56,71 @@ type Config struct {
 
 // ServiceAccount represents an OpenAI project service account
 type ServiceAccount struct {
-	ID          string     `json:"id"`
-	ProjectID   string     `json:"project_id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"project_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   *UnixTime `json:"created_at,omitempty"`
+}
+
+// MarshalJSON implements custom marshaling for ServiceAccount
+func (sa *ServiceAccount) MarshalJSON() ([]byte, error) {
+	type Alias ServiceAccount
+	return json.Marshal(&struct {
+		*Alias
+		CreatedAt *time.Time `json:"created_at,omitempty"`
+	}{
+		Alias:     (*Alias)(sa),
+		CreatedAt: sa.GetCreatedAt(),
+	})
+}
+
+// GetCreatedAt returns the created_at time as a time.Time pointer
+func (sa *ServiceAccount) GetCreatedAt() *time.Time {
+	if sa.CreatedAt == nil {
+		return nil
+	}
+	return sa.CreatedAt.TimePtr()
 }
 
 // APIKey represents an OpenAI API key
 type APIKey struct {
-	ID           string     `json:"id"`
-	Key          string     `json:"key,omitempty"` // Only available when creating a new key
-	Name         string     `json:"name"`
-	ServiceAccID string     `json:"service_account_id"`
-	CreatedAt    *time.Time `json:"created_at,omitempty"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	ID           string    `json:"id"`
+	Key          string    `json:"key,omitempty"` // Only available when creating a new key
+	Name         string    `json:"name"`
+	ServiceAccID string    `json:"service_account_id"`
+	CreatedAt    *UnixTime `json:"created_at,omitempty"`
+	ExpiresAt    *UnixTime `json:"expires_at,omitempty"`
+}
+
+// MarshalJSON implements custom marshaling for APIKey
+func (ak *APIKey) MarshalJSON() ([]byte, error) {
+	type Alias APIKey
+	return json.Marshal(&struct {
+		*Alias
+		CreatedAt *time.Time `json:"created_at,omitempty"`
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	}{
+		Alias:     (*Alias)(ak),
+		CreatedAt: ak.GetCreatedAt(),
+		ExpiresAt: ak.GetExpiresAt(),
+	})
+}
+
+// GetCreatedAt returns the created_at time as a time.Time pointer
+func (ak *APIKey) GetCreatedAt() *time.Time {
+	if ak.CreatedAt == nil {
+		return nil
+	}
+	return ak.CreatedAt.TimePtr()
+}
+
+// GetExpiresAt returns the expires_at time as a time.Time pointer
+func (ak *APIKey) GetExpiresAt() *time.Time {
+	if ak.ExpiresAt == nil {
+		return nil
+	}
+	return ak.ExpiresAt.TimePtr()
 }
 
 // CreateServiceAccountRequest represents a request to create a service account
@@ -79,13 +129,6 @@ type CreateServiceAccountRequest struct {
 	// and should not be part of the JSON body
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-}
-
-// CreateAPIKeyRequest represents a request to create an API key
-type CreateAPIKeyRequest struct {
-	Name         string     `json:"name"`
-	ServiceAccID string     `json:"service_account_id"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
 }
 
 // SetConfig updates the client configuration
@@ -197,15 +240,23 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	return respBody, nil
 }
 
-// CreateServiceAccount creates a new project service account
-func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, error) {
+// ServiceAccountResponse represents the API response for creating a service account.
+// It includes both the service account and the associated API key.
+type ServiceAccountResponse struct {
+	ServiceAccount *ServiceAccount `json:"service_account"`
+	APIKey         *APIKey         `json:"api_key"`
+}
+
+// CreateServiceAccount creates a new project service account and returns both the service account and API key
+// in a single operation, as per the actual OpenAI API behavior.
+func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error) {
 	// Validate inputs
 	if projectID == "" {
-		return nil, fmt.Errorf("project ID is required")
+		return nil, nil, fmt.Errorf("project ID is required")
 	}
 
 	if req.Name == "" {
-		return nil, fmt.Errorf("service account name is required")
+		return nil, nil, fmt.Errorf("service account name is required")
 	}
 
 	// Validate service account name according to OpenAI requirements
@@ -213,7 +264,7 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 		c.logger.Error("Invalid service account name",
 			"name", req.Name,
 			"error", err)
-		return nil, fmt.Errorf("invalid service account name: %w", err)
+		return nil, nil, fmt.Errorf("invalid service account name: %w", err)
 	}
 
 	// Log creation attempt
@@ -231,23 +282,33 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 			"project_id", projectID,
 			"name", req.Name,
 			"error", err)
-		return nil, fmt.Errorf("error creating service account: %w", err)
+		return nil, nil, fmt.Errorf("error creating service account: %w", err)
 	}
 
-	var svcAccount ServiceAccount
-	if err := json.Unmarshal(respBody, &svcAccount); err != nil {
+	// Unmarshal both service account and API key from response
+	var resp ServiceAccountResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
 		c.logger.Error("Failed to parse service account response",
 			"error", err,
 			"response", string(respBody))
-		return nil, fmt.Errorf("error parsing service account response: %w", err)
+		return nil, nil, fmt.Errorf("error parsing service account response: %w", err)
 	}
 
-	c.logger.Info("Created service account successfully",
-		"service_account_id", svcAccount.ID,
-		"project_id", svcAccount.ProjectID,
-		"name", svcAccount.Name)
+	if resp.ServiceAccount == nil {
+		return nil, nil, fmt.Errorf("service account data missing in API response")
+	}
 
-	return &svcAccount, nil
+	if resp.APIKey == nil {
+		return nil, nil, fmt.Errorf("API key data missing in API response")
+	}
+
+	c.logger.Info("Created service account with API key successfully",
+		"service_account_id", resp.ServiceAccount.ID,
+		"project_id", resp.ServiceAccount.ProjectID,
+		"name", resp.ServiceAccount.Name,
+		"api_key_id", resp.APIKey.ID)
+
+	return resp.ServiceAccount, resp.APIKey, nil
 }
 
 // DeleteServiceAccount deletes a service account by ID
@@ -286,50 +347,8 @@ func (c *Client) DeleteServiceAccount(ctx context.Context, id string, projectID 
 	return nil
 }
 
-// CreateAPIKey creates a new API key for a service account
-func (c *Client) CreateAPIKey(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error) {
-	// Validate inputs
-	if req.ServiceAccID == "" {
-		return nil, fmt.Errorf("service account ID is required")
-	}
-
-	if req.Name == "" {
-		return nil, fmt.Errorf("name is required")
-	}
-
-	// Log creation attempt
-	c.logger.Debug("Creating API key",
-		"service_account_id", req.ServiceAccID,
-		"name", req.Name,
-		"expires_at", req.ExpiresAt)
-
-	path := apiKeysEndpoint
-	respBody, err := c.doRequest(ctx, http.MethodPost, path, req)
-	if err != nil {
-		c.logger.Error("Failed to create API key",
-			"service_account_id", req.ServiceAccID,
-			"name", req.Name,
-			"error", err)
-		return nil, fmt.Errorf("error creating API key: %w", err)
-	}
-
-	var apiKey APIKey
-	if err := json.Unmarshal(respBody, &apiKey); err != nil {
-		c.logger.Error("Failed to parse API key response",
-			"error", err,
-			"response", string(respBody))
-		return nil, fmt.Errorf("error parsing API key response: %w", err)
-	}
-
-	// Log key was created successfully (but don't log the key itself)
-	c.logger.Info("Created API key successfully",
-		"api_key_id", apiKey.ID,
-		"service_account_id", apiKey.ServiceAccID,
-		"name", apiKey.Name,
-		"expires_at", apiKey.ExpiresAt)
-
-	return &apiKey, nil
-}
+// NOTE: CreateAPIKey is no longer needed as API keys are created automatically
+// when creating a service account in the OpenAI API
 
 // DeleteAPIKey deletes an API key by ID
 func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {

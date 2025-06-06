@@ -137,31 +137,15 @@ func (b *backend) operationSetCheckOut(ctx context.Context, req *logical.Request
 			return nil, err
 		}
 
-		// Found an available account - generate API key for it
-		expiresAt := time.Now().Add(ttl)
-		apiKey, err := b.client.CreateAPIKey(ctx, CreateAPIKeyRequest{
-			Name:         fmt.Sprintf("checkout-key-%d", time.Now().Unix()),
-			ServiceAccID: serviceAccountID,
-			ExpiresAt:    &expiresAt,
-		})
-		if err != nil {
-			// Failed to create API key - set the service account back to available
+		// Only support the current model: fail if no API key is available for the service account
+		apiKeyID, err := b.GetAPIKey(ctx, req.Storage, serviceAccountID)
+		if err != nil || apiKeyID == "" {
 			checkInErr := b.CheckIn(ctx, req.Storage, serviceAccountID, set.ProjectID)
 			if checkInErr != nil {
-				b.Logger().Error("failed to check in service account after API key creation failure",
+				b.Logger().Error("failed to check in service account after missing API key",
 					"service_account_id", serviceAccountID, "error", checkInErr)
 			}
-			b.emitAPIErrorMetric("CreateAPIKey", "check_out_error")
-			return nil, fmt.Errorf("error creating API key: %w", err)
-		}
-
-		// Store the API key ID for later cleanup
-		if err := b.StoreAPIKey(ctx, req.Storage, serviceAccountID, apiKey.ID); err != nil {
-			b.Logger().Warn("failed to store API key ID",
-				"service_account_id", serviceAccountID,
-				"api_key_id", apiKey.ID,
-				"error", err)
-			// Continue anyway as this is not fatal
+			return nil, fmt.Errorf("no API key available for service account: %s", serviceAccountID)
 		}
 
 		// Get service account details for the response
@@ -176,7 +160,7 @@ func (b *backend) operationSetCheckOut(ctx context.Context, req *logical.Request
 		// Create response data
 		respData := map[string]interface{}{
 			"service_account_id": serviceAccountID,
-			"api_key":            apiKey.Key,
+			"api_key":            apiKeyID,
 		}
 
 		// Add service account details if available
@@ -190,7 +174,7 @@ func (b *backend) operationSetCheckOut(ctx context.Context, req *logical.Request
 		// Create response with secret for renewal
 		internalData := map[string]interface{}{
 			"service_account_id": serviceAccountID,
-			"api_key_id":         apiKey.ID,
+			"api_key_id":         apiKeyID,
 			"set_name":           setName,
 			"project_id":         set.ProjectID,
 		}

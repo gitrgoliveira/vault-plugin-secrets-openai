@@ -164,22 +164,9 @@ func (b *backend) scheduleAdminKeyRotation(ctx context.Context, storage logical.
 		return nil
 	}
 
-	// Determine rotation period - use AutomatedRotationParams if configured, or fall back to legacy
-	var rotationPeriod time.Duration
-
-	// Get rotation period from automated rotation params
-	if config.AutomatedRotationParams.RotationPeriod > 0 {
-		// Use automated rotation period if set
-		rotationPeriod = config.AutomatedRotationParams.RotationPeriod
-		b.Logger().Info("Using automated rotation period",
-			"period", rotationPeriod)
-	} else if config.RotationDuration > 0 {
-		// Fall back to legacy rotation duration
-		rotationPeriod = config.RotationDuration
-		b.Logger().Info("Using legacy rotation period",
-			"period", config.RotationPeriod)
-	} else {
-		// No rotation period defined
+	// Only use automated rotation params;
+	rotationPeriod := config.AutomatedRotationParams.RotationPeriod
+	if rotationPeriod <= 0 {
 		b.Logger().Debug("Admin key rotation is disabled (no period), not scheduling")
 		return nil
 	}
@@ -260,17 +247,8 @@ func (b *backend) checkAdminKeyRotation(ctx context.Context, storage logical.Sto
 		return nil
 	}
 
-	// Determine the rotation period to use
-	var rotationPeriod time.Duration
-
-	// First try to use the automated rotation parameters
-	if config.AutomatedRotationParams.RotationPeriod > 0 {
-		rotationPeriod = config.AutomatedRotationParams.RotationPeriod
-	} else if config.RotationDuration > 0 {
-		// Fall back to legacy rotation duration
-		rotationPeriod = config.RotationDuration
-	} else {
-		// No rotation period defined
+	rotationPeriod := config.AutomatedRotationParams.RotationPeriod
+	if rotationPeriod <= 0 {
 		return nil
 	}
 

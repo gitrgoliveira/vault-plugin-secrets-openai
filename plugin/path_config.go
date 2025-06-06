@@ -21,15 +21,12 @@ const (
 )
 
 // openaiConfig contains the configuration for the OpenAI secrets engine
+// Only supports the current OpenAI API model and automated rotation.
 type openaiConfig struct {
 	AdminAPIKey     string    `json:"admin_api_key"`
 	APIEndpoint     string    `json:"api_endpoint"`
 	OrganizationID  string    `json:"organization_id"`
 	LastRotatedTime time.Time `json:"last_rotated_time"`
-
-	// Legacy rotation configuration
-	RotationPeriod   string        `json:"rotation_period"`
-	RotationDuration time.Duration `json:"rotation_duration"`
 
 	// Automated rotation configuration
 	automatedrotationutil.AutomatedRotationParams
@@ -94,6 +91,13 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 					Summary:  "Remove an existing OpenAI configuration.",
 				},
 			},
+			ExistenceCheck: func(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
+				entry, err := req.Storage.Get(ctx, configPath)
+				if err != nil {
+					return false, err
+				}
+				return entry != nil, nil
+			},
 			HelpSynopsis:    confHelpSyn,
 			HelpDescription: confHelpDesc,
 		},
@@ -140,7 +144,7 @@ func (b *backend) pathProjectConfig() []*framework.Path {
 					Summary:  "Delete an OpenAI project configuration.",
 				},
 			},
-
+			ExistenceCheck:  existenceCheckForNamedPath("name", projectStoragePath),
 			HelpSynopsis:    projectHelpSyn,
 			HelpDescription: projectHelpDesc,
 		},
@@ -172,15 +176,13 @@ func (b *backend) pathConfigRead(ctx context.Context, req *logical.Request, data
 	respData := map[string]interface{}{
 		"api_endpoint":    config.APIEndpoint,
 		"organization_id": config.OrganizationID,
-		// Admin API key is not returned for security reasons
-		"rotation_period": config.RotationPeriod,
 	}
 
 	// Add automated rotation parameters to the response
 	config.PopulateAutomatedRotationData(respData)
 
-	// Only add last_rotated field if rotation is enabled
-	if config.RotationDuration > 0 || config.ShouldRegisterRotationJob() {
+	// Only add last_rotated field if automated rotation is enabled
+	if config.ShouldRegisterRotationJob() {
 		respData["last_rotated"] = config.LastRotatedTime.Format(time.RFC3339)
 	}
 
@@ -231,30 +233,6 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		config.APIEndpoint = DefaultAPIEndpoint
 	}
 
-	// Handle legacy rotation period (for backward compatibility)
-	rotationPeriod, ok := data.GetOk("rotation_period")
-	if ok {
-		seconds := rotationPeriod.(int)
-		config.RotationPeriod = fmt.Sprintf("%ds", seconds)
-		config.RotationDuration = time.Duration(seconds) * time.Second
-
-		// Initialize last rotated time if not set
-		if config.LastRotatedTime.IsZero() {
-			config.LastRotatedTime = time.Now()
-		}
-
-		// Use the legacy rotation period as automatic_rotation_period if not explicitly set
-		if _, autoOk := data.GetOk("automatic_rotation_period"); !autoOk && seconds > 0 {
-			data.Raw["automatic_rotation_period"] = seconds
-			b.Logger().Info("Using legacy rotation_period for automatic rotation",
-				"rotation_period", config.RotationPeriod)
-		}
-
-		b.Logger().Info("Admin key rotation configuration updated",
-			"rotation_period", config.RotationPeriod,
-			"enabled", seconds > 0)
-	}
-
 	// Parse automated rotation parameters
 	if err := config.ParseAutomatedRotationFields(data); err != nil {
 		return logical.ErrorResponse("error parsing automated rotation fields: %s", err), nil
@@ -290,10 +268,8 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	// Update backend client
 	b.client = client
 
-	// Schedule admin key rotation if enabled (using either legacy or automated rotation params)
-	needsRotation := config.RotationDuration > 0 || config.ShouldRegisterRotationJob()
-
-	if needsRotation {
+	// Schedule admin key rotation if enabled (automated rotation only)
+	if config.ShouldRegisterRotationJob() {
 		b.Logger().Info("Scheduling admin key rotation after configuration update")
 		if err := b.scheduleAdminKeyRotation(ctx, req.Storage); err != nil {
 			b.Logger().Warn("Failed to schedule admin key rotation", "error", err)
@@ -343,13 +319,12 @@ func (b *backend) pathProjectRead(ctx context.Context, req *logical.Request, dat
 	if err != nil {
 		return nil, err
 	}
-
 	if project == nil {
 		return nil, nil
 	}
-
 	return &logical.Response{
 		Data: map[string]interface{}{
+			"name":        project.Name,
 			"project_id":  project.ProjectID,
 			"description": project.Description,
 		},

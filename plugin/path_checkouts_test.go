@@ -47,6 +47,14 @@ func TestCheckoutOperations(t *testing.T) {
 		require.NoError(t, storage.Put(ctx, entry))
 	}
 
+	// Set up API key storage for each service account (required by new model)
+	for _, id := range []string{"svc1", "svc2"} {
+		apiKeyID := "test-api-key"
+		keyEntry, err := logical.StorageEntryJSON(apiKeyStoragePrefix+id, apiKeyID)
+		require.NoError(t, err)
+		require.NoError(t, storage.Put(ctx, keyEntry))
+	}
+
 	// Register service accounts as managed
 	b.managedUserLock.Lock()
 	for _, id := range set.ServiceAccountIDs {
@@ -57,12 +65,7 @@ func TestCheckoutOperations(t *testing.T) {
 	// Set up mock client behavior
 	mc := &mockClient{}
 	b.client = mc
-	mc.createAPIKeyFn = func(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error) {
-		return &APIKey{
-			ID:  fmt.Sprintf("apikey-%s", req.ServiceAccID),
-			Key: "test-api-key",
-		}, nil
-	}
+	// No need for createAPIKeyFn, as API keys are only created with service accounts in the new model.
 	mc.getServiceAccountFn = func(ctx context.Context, id string, projectID string) (*ServiceAccount, error) {
 		return &ServiceAccount{
 			ID:   id,
@@ -333,6 +336,14 @@ func TestEndCheckOut(t *testing.T) {
 	entry, err := logical.StorageEntryJSON(checkoutStoragePrefix+"svc1", checkOut)
 	require.NoError(t, err)
 	require.NoError(t, storage.Put(ctx, entry))
+
+	// Set up API key storage for each service account (required by new model)
+	for _, id := range []string{"svc1", "svc2"} {
+		apiKeyID := "test-api-key"
+		keyEntry, err := logical.StorageEntryJSON(apiKeyStoragePrefix+id, apiKeyID)
+		require.NoError(t, err)
+		require.NoError(t, storage.Put(ctx, keyEntry))
+	}
 
 	// Store an API key
 	apiKeyID := "test-api-key"

@@ -19,8 +19,7 @@ import (
 // ClientAPI defines the interface for OpenAI client operations used by the backend
 // This allows for mocking in tests.
 type ClientAPI interface {
-	CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, error)
-	CreateAPIKey(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error)
+	CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error)
 	DeleteServiceAccount(ctx context.Context, id string, projectID ...string) error
 	DeleteAPIKey(ctx context.Context, id string) error
 	SetConfig(config *Config) error
@@ -138,12 +137,6 @@ func (b *backend) initialize(ctx context.Context, initRequest *logical.Initializ
 				// Non-fatal error, continue initialization
 			} else {
 				b.Logger().Info("Automated admin key rotation successfully configured")
-			}
-		} else if config.RotationDuration > 0 {
-			// Fall back to legacy queue-based rotation if rotation manager isn't available
-			b.Logger().Info("Admin key legacy rotation enabled", "period", config.RotationPeriod)
-			if err := b.scheduleAdminKeyRotation(ctx, initRequest.Storage); err != nil {
-				b.Logger().Error("Failed to schedule admin key rotation", "error", err)
 			}
 		} else {
 			b.Logger().Info("Admin key rotation is disabled")

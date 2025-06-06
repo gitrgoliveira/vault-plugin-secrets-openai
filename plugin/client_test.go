@@ -74,7 +74,7 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 		ProjectID:   "proj_456",
 		Name:        "test-svc-account",
 		Description: "Test service account",
-		CreatedAt:   timePtr(time.Now()),
+		CreatedAt:   UnixTimePtr(&[]time.Time{time.Now()}[0]),
 	}
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +95,18 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 		// Return mock response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(mockSvcAccount); err != nil {
+		resp := struct {
+			ServiceAccount *ServiceAccount `json:"service_account"`
+			APIKey         *APIKey         `json:"api_key"`
+		}{
+			ServiceAccount: &mockSvcAccount,
+			APIKey: &APIKey{
+				ID:           "key_123",
+				Key:          "sk-test",
+				ServiceAccID: mockSvcAccount.ID,
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			t.Fatalf("Failed to encode response: %v", err)
 		}
 	}))
@@ -113,7 +124,7 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 
 	// Call the function
 	ctx := context.Background()
-	svcAccount, err := client.CreateServiceAccount(ctx, "proj_456", CreateServiceAccountRequest{
+	svcAccount, apiKey, err := client.CreateServiceAccount(ctx, "proj_456", CreateServiceAccountRequest{
 		Name:        "test-svc-account",
 		Description: "Test service account",
 	})
@@ -124,6 +135,7 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 	assert.Equal(t, mockSvcAccount.ProjectID, svcAccount.ProjectID)
 	assert.Equal(t, mockSvcAccount.Name, svcAccount.Name)
 	assert.Equal(t, mockSvcAccount.Description, svcAccount.Description)
+	assert.NotNil(t, apiKey)
 }
 
 func TestClient_TestConnection(t *testing.T) {

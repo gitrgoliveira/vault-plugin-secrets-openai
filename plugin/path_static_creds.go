@@ -118,6 +118,7 @@ func (b *backend) pathStaticRoles() []*framework.Path {
 					Summary:  "Rotate the API key for a static role.",
 				},
 			},
+			ExistenceCheck:  existenceCheckForNamedPath("name", func(name string) string { return staticRolePath + "/" + name }),
 			HelpSynopsis:    "Access API keys for static roles",
 			HelpDescription: "Read and rotate API keys for static roles.",
 		},
@@ -215,23 +216,10 @@ func (b *backend) pathStaticRoleWrite(ctx context.Context, req *logical.Request,
 		return logical.ErrorResponse("project %q not found", projectName), nil
 	}
 
-	// Update role with data from request
-	if serviceAccountID, ok := data.GetOk("service_account_id"); ok {
-		role.ServiceAccountID = serviceAccountID.(string)
-	}
-
-	if role.ServiceAccountID == "" {
-		return logical.ErrorResponse("service_account_id is required"), nil
-	}
-
-	// Store project ID
-	role.ProjectID = project.ProjectID
-
 	// API key name
 	if apiKeyName, ok := data.GetOk("api_key_name"); ok {
 		role.APIKeyName = apiKeyName.(string)
 	}
-
 	if role.APIKeyName == "" {
 		role.APIKeyName = "vault-static-key"
 	}
@@ -245,42 +233,27 @@ func (b *backend) pathStaticRoleWrite(ctx context.Context, req *logical.Request,
 	if ttl, ok := data.GetOk("ttl"); ok {
 		role.TTL = time.Duration(ttl.(int)) * time.Second
 	}
-
 	if role.TTL == 0 {
 		role.TTL = 24 * time.Hour
 	}
 
-	// Verify the service account ID exists
-	if b.client != nil {
-		svcAccount, err := b.client.GetServiceAccount(ctx, role.ServiceAccountID, role.ProjectID)
-		if err != nil {
-			return logical.ErrorResponse("error verifying service account: %s", err), nil
-		}
+	role.ProjectID = project.ProjectID
 
-		if svcAccount == nil {
-			return logical.ErrorResponse("service account %q not found", role.ServiceAccountID), nil
-		}
+	// Always create a new service account and API key for static roles
+	if b.client == nil {
+		return logical.ErrorResponse("OpenAI client not configured"), nil
 	}
 
-	// If this is a new role or API key is not yet generated, create an initial key
-	if req.Operation == logical.CreateOperation || role.APIKey == "" {
-		if b.client == nil {
-			return logical.ErrorResponse("OpenAI client not configured"), nil
-		}
-
-		// Create API key
-		apiKey, err := b.client.CreateAPIKey(ctx, CreateAPIKeyRequest{
-			Name:         role.APIKeyName,
-			ServiceAccID: role.ServiceAccountID,
-			ExpiresAt:    timePtr(time.Now().Add(role.TTL)),
-		})
-		if err != nil {
-			return logical.ErrorResponse("failed to create API key: %s", err), nil
-		}
-
-		role.APIKey = apiKey.Key
-		role.LastRotatedTime = time.Now()
+	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, role.ProjectID, CreateServiceAccountRequest{
+		Name:        role.APIKeyName + "-static",
+		Description: "Vault static role: " + name,
+	})
+	if err != nil {
+		return logical.ErrorResponse("failed to create service account and API key: %s", err), nil
 	}
+	role.ServiceAccountID = svcAccount.ID
+	role.APIKey = apiKey.Key
+	role.LastRotatedTime = time.Now()
 
 	// Save the role
 	entry, err := logical.StorageEntryJSON(staticRolePath+"/"+name, role)
@@ -418,17 +391,17 @@ func (b *backend) pathStaticCredsRotate(ctx context.Context, req *logical.Reques
 		return logical.ErrorResponse("OpenAI client not configured"), nil
 	}
 
-	// Create a new API key first
-	apiKey, err := b.client.CreateAPIKey(ctx, CreateAPIKeyRequest{
-		Name:         role.APIKeyName,
-		ServiceAccID: role.ServiceAccountID,
-		ExpiresAt:    timePtr(time.Now().Add(role.TTL)),
+	// Create a new service account and API key for rotation
+	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, role.ProjectID, CreateServiceAccountRequest{
+		Name:        role.APIKeyName + "-static",
+		Description: "Vault static role rotation: " + name,
 	})
 	if err != nil {
-		return logical.ErrorResponse("failed to create API key: %s", err), nil
+		return logical.ErrorResponse("failed to create service account and API key: %s", err), nil
 	}
-
 	oldAPIKey := role.APIKey
+	oldServiceAccountID := role.ServiceAccountID
+	role.ServiceAccountID = svcAccount.ID
 	role.APIKey = apiKey.Key
 	role.LastRotatedTime = time.Now()
 
@@ -442,13 +415,12 @@ func (b *backend) pathStaticCredsRotate(ctx context.Context, req *logical.Reques
 		return nil, err
 	}
 
-	// Now revoke the old API key if present
+	// Now revoke the old API key and service account if present
 	if oldAPIKey != "" {
-		err := b.client.DeleteAPIKey(ctx, oldAPIKey)
-		if err != nil {
-			b.Logger().Warn("failed to revoke old API key during static role rotation", "role", name, "api_key", oldAPIKey, "error", err)
-			return logical.ErrorResponse("failed to revoke old API key from OpenAI: %s", err), nil
-		}
+		_ = b.client.DeleteAPIKey(ctx, oldAPIKey) // ignore error
+	}
+	if oldServiceAccountID != "" {
+		_ = b.client.DeleteServiceAccount(ctx, oldServiceAccountID, role.ProjectID) // ignore error
 	}
 
 	resp := staticSecretCreds(b).Response(map[string]interface{}{
@@ -486,9 +458,4 @@ func (b *backend) getStaticRole(ctx context.Context, s logical.Storage, name str
 	}
 
 	return &role, nil
-}
-
-// Helper function to create a time pointer
-func timePtr(t time.Time) *time.Time {
-	return &t
 }

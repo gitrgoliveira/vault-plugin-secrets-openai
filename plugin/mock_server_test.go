@@ -81,7 +81,6 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 
 	// Match URL patterns and dispatch to appropriate handler
 	// Only supporting the correct OpenAI API paths with required /organization prefix
-	// The legacy paths without the /organization prefix are invalid and no longer supported
 	serviceAccountsPattern := regexp.MustCompile(`/v1/organization/projects/([^/]+)/service_accounts(?:/([^/]+))?`)
 	apiKeysPattern := regexp.MustCompile(`/v1/organization/api_keys(?:/([^/]+))?`)
 	adminAPIKeysPattern := regexp.MustCompile(`/v1/organization/admin_api_keys(?:/([^/]+))?`)
@@ -137,8 +136,6 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				m.getAPIKey(w, r, keyID)
 			}
-		case http.MethodPost:
-			m.createAPIKey(w, r)
 		case http.MethodDelete:
 			if keyID != "" {
 				m.deleteAPIKey(w, r, keyID)
@@ -203,12 +200,13 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 
 	// Create a new service account
 	now := time.Now()
+	nowUnix := UnixTime(now)
 	svcAcc := &ServiceAccount{
 		ID:          fmt.Sprintf("svc_%s", generateRandomID(10)),
 		ProjectID:   projectID,
 		Name:        req.Name,
 		Description: req.Description,
-		CreatedAt:   &now,
+		CreatedAt:   &nowUnix,
 	}
 
 	// Initialize the project's service accounts map if it doesn't exist
@@ -219,10 +217,31 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 	// Store the service account
 	m.serviceAccounts[projectID][svcAcc.ID] = svcAcc
 
-	// Return the created service account
+	// Create an API key for the service account
+	apiKey := &APIKey{
+		ID:           fmt.Sprintf("key_%s", generateRandomID(10)),
+		Key:          fmt.Sprintf("sk-test-%s", generateRandomID(24)),
+		Name:         fmt.Sprintf("%s-key", req.Name),
+		ServiceAccID: svcAcc.ID,
+		CreatedAt:    &nowUnix,
+	}
+
+	// Store the API key
+	m.apiKeys[apiKey.ID] = apiKey
+
+	// Create response with both service account and API key
+	response := struct {
+		ServiceAccount *ServiceAccount `json:"service_account"`
+		APIKey         *APIKey         `json:"api_key"`
+	}{
+		ServiceAccount: svcAcc,
+		APIKey:         apiKey,
+	}
+
+	// Return the created service account and API key
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(svcAcc); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
 		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
 		return
@@ -329,67 +348,6 @@ func (m *MockOpenAIServer) deleteServiceAccount(w http.ResponseWriter, r *http.R
 
 	// Return success with empty response
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// createAPIKey handles API key creation requests
-func (m *MockOpenAIServer) createAPIKey(w http.ResponseWriter, r *http.Request) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	// Check if we should simulate a failure
-	if m.failureMode == "create_key" {
-		writeError(w, m.failureStatusCode, "server_error", m.failureMessage)
-		return
-	}
-
-	var req CreateAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "Invalid request body")
-		return
-	}
-
-	// Validate required fields
-	if req.Name == "" || req.ServiceAccID == "" {
-		writeError(w, http.StatusBadRequest, "missing_field", "Name and service account ID are required")
-		return
-	}
-
-	// Verify that the service account exists
-	found := false
-	for _, accounts := range m.serviceAccounts {
-		if _, exists := accounts[req.ServiceAccID]; exists {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		writeError(w, http.StatusNotFound, "not_found", "Service account not found")
-		return
-	}
-
-	// Create a new API key
-	now := time.Now()
-	apiKey := &APIKey{
-		ID:           fmt.Sprintf("key_%s", generateRandomID(10)),
-		Key:          fmt.Sprintf("sk-mockkey%s", generateRandomID(24)),
-		Name:         req.Name,
-		ServiceAccID: req.ServiceAccID,
-		CreatedAt:    &now,
-		ExpiresAt:    req.ExpiresAt,
-	}
-
-	// Store the API key
-	m.apiKeys[apiKey.ID] = apiKey
-
-	// Return the created API key
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(apiKey); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
 }
 
 // getAPIKey handles API key retrieval requests
@@ -568,35 +526,6 @@ func (m *MockOpenAIServer) getProject(w http.ResponseWriter, r *http.Request, pr
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(project)
-}
-
-// listProjects returns a list of projects
-func (m *MockOpenAIServer) listProjects(w http.ResponseWriter, r *http.Request) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	// Return a standard paginated response with some dummy projects
-	response := map[string]interface{}{
-		"data": []map[string]interface{}{
-			{
-				"id":          "proj_test1",
-				"name":        "Test Project 1",
-				"description": "First test project",
-				"created_at":  time.Now().Format(time.RFC3339),
-			},
-			{
-				"id":          "proj_test2",
-				"name":        "Test Project 2",
-				"description": "Second test project",
-				"created_at":  time.Now().Format(time.RFC3339),
-			},
-		},
-		"has_more": false,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
 }
 
 // Helper function to generate a random ID string

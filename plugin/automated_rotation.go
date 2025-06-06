@@ -6,7 +6,6 @@ package openaisecrets
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/sdk/rotation"
@@ -57,33 +56,21 @@ func (b *backend) setupAdminKeyRotation(ctx context.Context, storage logical.Sto
 		}
 
 		_, configErr = rotation.ConfigureRotationJob(rotationJobReq)
-	} else if config.RotationPeriod != "" && config.RotationPeriod != "0" {
+	} else if config.AutomatedRotationParams.RotationPeriod > 0 {
 		b.Logger().Info("Setting up periodic rotation for admin API key",
-			"period", config.RotationPeriod)
+			"period", config.AutomatedRotationParams.RotationPeriod)
 
-		rotationPeriod, err := time.ParseDuration(config.RotationPeriod)
-		if err != nil {
-			return fmt.Errorf("invalid rotation period: %w", err)
-		}
-
-		// Configure the rotation job with period
 		rotationJobReqPeriodic := &rotation.RotationJobConfigureRequest{
 			Name:           adminKeyRotationName,
 			MountPoint:     rotationPrefix,
 			ReqPath:        configPath,
-			RotationPeriod: rotationPeriod,
+			RotationPeriod: config.AutomatedRotationParams.RotationPeriod,
 		}
 
 		_, configErr = rotation.ConfigureRotationJob(rotationJobReqPeriodic)
 	} else {
-		// For legacy rotation, use the queue-based approach
-		if config.RotationDuration > 0 {
-			b.Logger().Info("Using legacy queue-based rotation for admin API key",
-				"period", config.RotationPeriod)
-			return b.scheduleAdminKeyRotation(ctx, storage)
-		}
-
-		return nil // No rotation configuration
+		// No rotation configuration
+		return nil
 	}
 
 	if configErr != nil {

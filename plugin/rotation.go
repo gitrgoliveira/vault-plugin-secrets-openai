@@ -212,14 +212,13 @@ func (b *backend) rotateRole(ctx context.Context, roleName string) {
 		return
 	}
 
-	// Create a new API key
-	apiKey, err := b.client.CreateAPIKey(ctx, CreateAPIKeyRequest{
-		Name:         role.APIKeyName,
-		ServiceAccID: role.ServiceAccountID,
-		ExpiresAt:    timePtr(time.Now().Add(role.TTL)),
+	// Create a new service account and API key for rotation
+	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, role.ProjectID, CreateServiceAccountRequest{
+		Name:        role.APIKeyName + "-static-rotation",
+		Description: "Vault static role rotation: " + roleName,
 	})
 	if err != nil {
-		b.Logger().Error("Failed to create API key", "role", roleName, "error", err)
+		b.Logger().Error("Failed to create service account and API key", "role", roleName, "error", err)
 
 		// Re-queue for retry
 		retryTime := time.Now().Add(30 * time.Second) // Retry in 30 seconds
@@ -229,7 +228,9 @@ func (b *backend) rotateRole(ctx context.Context, roleName string) {
 		return
 	}
 
-	// Update the role with the new API key
+	oldAPIKey := role.APIKey
+	oldServiceAccountID := role.ServiceAccountID
+	role.ServiceAccountID = svcAccount.ID
 	role.APIKey = apiKey.Key
 	role.LastRotatedTime = time.Now()
 
@@ -243,6 +244,14 @@ func (b *backend) rotateRole(ctx context.Context, roleName string) {
 	if err := b.storageView.Put(ctx, entry); err != nil {
 		b.Logger().Error("Failed to save role", "role", roleName, "error", err)
 		return
+	}
+
+	// Clean up the old API key and service account if present
+	if oldAPIKey != "" {
+		_ = b.client.DeleteAPIKey(ctx, oldAPIKey) // ignore error
+	}
+	if oldServiceAccountID != "" {
+		_ = b.client.DeleteServiceAccount(ctx, oldServiceAccountID, role.ProjectID) // ignore error
 	}
 
 	b.Logger().Info("Successfully rotated credentials", "role", roleName)

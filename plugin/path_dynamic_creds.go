@@ -345,17 +345,6 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 			"sanitized", svcAccountName)
 	}
 
-	// Create service account
-	b.Logger().Debug("Creating service account", "name", svcAccountName, "project", project.ProjectID)
-	svcAccount, err := b.client.CreateServiceAccount(ctx, project.ProjectID, CreateServiceAccountRequest{
-		Name:        svcAccountName,
-		Description: role.ServiceAccountDescription,
-	})
-	if err != nil {
-		b.emitAPIErrorMetric("CreateServiceAccount", "error")
-		return nil, fmt.Errorf("error creating service account: %w", err)
-	}
-
 	// Determine TTL
 	ttl := role.TTL
 	if ttlRaw, ok := data.GetOk("ttl"); ok {
@@ -368,23 +357,19 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	// Calculate expiry time
 	expiresAt := time.Now().Add(ttl)
 
-	// Create API key
-	b.Logger().Debug("Creating API key for service account", "service_account_id", svcAccount.ID)
-	apiKey, err := b.client.CreateAPIKey(ctx, CreateAPIKeyRequest{
-		Name:         fmt.Sprintf("%s-key", svcAccountName),
-		ServiceAccID: svcAccount.ID,
-		ExpiresAt:    &expiresAt,
+	// Create service account (which automatically creates an API key in OpenAI API)
+	b.Logger().Debug("Creating service account with API key", "name", svcAccountName, "project", project.ProjectID)
+	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, project.ProjectID, CreateServiceAccountRequest{
+		Name:        svcAccountName,
+		Description: role.ServiceAccountDescription,
 	})
 	if err != nil {
-		b.emitAPIErrorMetric("CreateAPIKey", "error")
-		// Clean up the service account if API key creation fails
-		cleanupErr := b.client.DeleteServiceAccount(ctx, svcAccount.ID)
-		if cleanupErr != nil {
-			b.Logger().Error("failed to clean up service account after API key creation failure",
-				"service_account_id", svcAccount.ID, "error", cleanupErr)
-		}
-		return nil, fmt.Errorf("error creating API key: %w", err)
+		b.emitAPIErrorMetric("CreateServiceAccount", "error")
+		return nil, fmt.Errorf("error creating service account: %w", err)
 	}
+
+	// Note: In OpenAI API, we can't control the TTL of API keys created with service accounts
+	// We'll track the TTL in Vault's system for credential revocation
 
 	// Store service account info for cleanup
 	if err := b.storeServiceAccountInfo(ctx, req.Storage, apiKey.ID, svcAccount.ID, expiresAt); err != nil {

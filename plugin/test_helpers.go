@@ -15,8 +15,7 @@ import (
 // Advanced mockClient for flexible test mocking
 // (replaces the simple mockClient above)
 type mockClient struct {
-	createServiceAccountFn func(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, error)
-	createAPIKeyFn         func(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error)
+	createServiceAccountFn func(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error)
 	deleteServiceAccountFn func(ctx context.Context, id string, projectID ...string) error
 	deleteAPIKeyFn         func(ctx context.Context, id string) error
 	setConfigFn            func(config *Config) error
@@ -26,17 +25,13 @@ type mockClient struct {
 	lastDeletedAPIKeyID string
 }
 
-func (m *mockClient) CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, error) {
+func (m *mockClient) CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error) {
 	if m.createServiceAccountFn != nil {
 		return m.createServiceAccountFn(ctx, projectID, req)
 	}
-	return &ServiceAccount{ID: "svc-123", Name: req.Name, ProjectID: projectID}, nil
-}
-func (m *mockClient) CreateAPIKey(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error) {
-	if m.createAPIKeyFn != nil {
-		return m.createAPIKeyFn(ctx, req)
-	}
-	return &APIKey{ID: "key-123", Key: "sk-test", ServiceAccID: req.ServiceAccID}, nil
+	serviceAccount := &ServiceAccount{ID: "svc-123", Name: req.Name, ProjectID: projectID}
+	apiKey := &APIKey{ID: "key-123", Key: "sk-test", ServiceAccID: serviceAccount.ID}
+	return serviceAccount, apiKey, nil
 }
 func (m *mockClient) DeleteServiceAccount(ctx context.Context, id string, projectID ...string) error {
 	if m.deleteServiceAccountFn != nil {
