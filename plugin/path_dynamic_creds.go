@@ -347,8 +347,7 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 
 	// Create service account
 	b.Logger().Debug("Creating service account", "name", svcAccountName, "project", project.ProjectID)
-	svcAccount, err := b.client.CreateServiceAccount(ctx, CreateServiceAccountRequest{
-		ProjectID:   project.ProjectID,
+	svcAccount, err := b.client.CreateServiceAccount(ctx, project.ProjectID, CreateServiceAccountRequest{
 		Name:        svcAccountName,
 		Description: role.ServiceAccountDescription,
 	})

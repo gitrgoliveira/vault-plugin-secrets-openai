@@ -95,7 +95,7 @@ func (b *backend) pathStaticRoles() []*framework.Path {
 					Summary:  "Delete a static role.",
 				},
 			},
-			ExistenceCheck:  existenceCheckForNamedPath("name", func(name string) string { return staticRolePath + "/" + name }),
+			ExistenceCheck:  b.pathStaticRoleExistenceCheck,
 			HelpSynopsis:    "Manage static roles",
 			HelpDescription: "Create, update, read, and delete static roles.",
 		},

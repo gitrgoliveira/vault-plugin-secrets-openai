@@ -80,8 +80,11 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check request method and path
 		assert.Equal(t, http.MethodPost, r.Method)
-		expectedPath := "/v1/projects/proj_456/service_accounts"
-		assert.Equal(t, expectedPath, r.URL.Path)
+		// Accept only the correct new path
+		expectedPath := "/v1/organization/projects/proj_456/service_accounts"
+		if r.URL.Path != expectedPath {
+			t.Fatalf("unexpected path: got %q, want %q", r.URL.Path, expectedPath)
+		}
 
 		// Check headers
 		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
@@ -110,8 +113,7 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 
 	// Call the function
 	ctx := context.Background()
-	svcAccount, err := client.CreateServiceAccount(ctx, CreateServiceAccountRequest{
-		ProjectID:   "proj_456",
+	svcAccount, err := client.CreateServiceAccount(ctx, "proj_456", CreateServiceAccountRequest{
 		Name:        "test-svc-account",
 		Description: "Test service account",
 	})
@@ -142,5 +144,3 @@ func TestClient_TestConnection(t *testing.T) {
 	err = client.TestConnection(ctx)
 	assert.NoError(t, err)
 }
-
-// Remove duplicate timePtr definition

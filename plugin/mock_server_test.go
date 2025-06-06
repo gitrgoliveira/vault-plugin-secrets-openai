@@ -80,9 +80,21 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Match URL patterns and dispatch to appropriate handler
-	serviceAccountsPattern := regexp.MustCompile(`/v1/projects/([^/]+)/service_accounts(?:/([^/]+))?`)
-	apiKeysPattern := regexp.MustCompile(`/v1/api_keys(?:/([^/]+))?`)
-	adminAPIKeysPattern := regexp.MustCompile(`/v1/admin_api_keys(?:/([^/]+))?`)
+	// Only supporting the correct OpenAI API paths with required /organization prefix
+	// The legacy paths without the /organization prefix are invalid and no longer supported
+	serviceAccountsPattern := regexp.MustCompile(`/v1/organization/projects/([^/]+)/service_accounts(?:/([^/]+))?`)
+	apiKeysPattern := regexp.MustCompile(`/v1/organization/api_keys(?:/([^/]+))?`)
+	adminAPIKeysPattern := regexp.MustCompile(`/v1/organization/admin_api_keys(?:/([^/]+))?`)
+
+	// Project direct operations
+	projectPattern := regexp.MustCompile(`/v1/organization/projects/([^/]+)/?$`)
+
+	// Handle direct project operations
+	if matches := projectPattern.FindStringSubmatch(r.URL.Path); matches != nil && r.Method == http.MethodGet {
+		projectID := matches[1]
+		m.getProject(w, r, projectID)
+		return
+	}
 
 	if matches := serviceAccountsPattern.FindStringSubmatch(r.URL.Path); matches != nil {
 		projectID := matches[1]
@@ -537,6 +549,54 @@ func (m *MockOpenAIServer) revokeAdminAPIKey(w http.ResponseWriter, r *http.Requ
 	// In real implementation, we would check if key exists and delete it
 	// For mock, we'll just return success
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// getProject handles project retrieval by ID
+func (m *MockOpenAIServer) getProject(w http.ResponseWriter, r *http.Request, projectID string) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	// For testing purposes, we'll just assume any project ID is valid
+	// and return a simple project response
+	project := map[string]interface{}{
+		"id":          projectID,
+		"name":        "Test Project",
+		"description": "A test project",
+		"created_at":  time.Now().Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(project)
+}
+
+// listProjects returns a list of projects
+func (m *MockOpenAIServer) listProjects(w http.ResponseWriter, r *http.Request) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	// Return a standard paginated response with some dummy projects
+	response := map[string]interface{}{
+		"data": []map[string]interface{}{
+			{
+				"id":          "proj_test1",
+				"name":        "Test Project 1",
+				"description": "First test project",
+				"created_at":  time.Now().Format(time.RFC3339),
+			},
+			{
+				"id":          "proj_test2",
+				"name":        "Test Project 2",
+				"description": "Second test project",
+				"created_at":  time.Now().Format(time.RFC3339),
+			},
+		},
+		"has_more": false,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
 
 // Helper function to generate a random ID string

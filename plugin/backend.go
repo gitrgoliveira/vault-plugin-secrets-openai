@@ -19,7 +19,7 @@ import (
 // ClientAPI defines the interface for OpenAI client operations used by the backend
 // This allows for mocking in tests.
 type ClientAPI interface {
-	CreateServiceAccount(ctx context.Context, req CreateServiceAccountRequest) (*ServiceAccount, error)
+	CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, error)
 	CreateAPIKey(ctx context.Context, req CreateAPIKeyRequest) (*APIKey, error)
 	DeleteServiceAccount(ctx context.Context, id string, projectID ...string) error
 	DeleteAPIKey(ctx context.Context, id string) error

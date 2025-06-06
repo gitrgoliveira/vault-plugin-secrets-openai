@@ -42,8 +42,7 @@ func TestClientIntegration_CompleteWorkflow(t *testing.T) {
 	projectID := "proj_123"
 
 	// 1. Create a service account
-	svcAcc, err := client.CreateServiceAccount(ctx, CreateServiceAccountRequest{
-		ProjectID:   projectID,
+	svcAcc, err := client.CreateServiceAccount(ctx, projectID, CreateServiceAccountRequest{
 		Name:        "test-service-account",
 		Description: "Test service account for integration test",
 	})
@@ -124,8 +123,7 @@ func TestClientIntegration_ErrorHandling(t *testing.T) {
 	projectID := "proj_456"
 
 	// Set up a successful service account first
-	svcAcc, err := client.CreateServiceAccount(ctx, CreateServiceAccountRequest{
-		ProjectID:   projectID,
+	svcAcc, err := client.CreateServiceAccount(ctx, projectID, CreateServiceAccountRequest{
 		Name:        "test-service-account",
 		Description: "Test service account for error handling test",
 	})
@@ -205,9 +203,8 @@ func TestClientIntegration_ServiceAccountNameValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := client.CreateServiceAccount(ctx, CreateServiceAccountRequest{
-				ProjectID: projectID,
-				Name:      tc.serviceName,
+			_, err := client.CreateServiceAccount(ctx, projectID, CreateServiceAccountRequest{
+				Name: tc.serviceName,
 			})
 
 			if tc.expectError {
@@ -240,9 +237,8 @@ func TestClientIntegration_APIKeyExpiration(t *testing.T) {
 	projectID := "proj_expiration"
 
 	// Create a service account first
-	svcAcc, err := client.CreateServiceAccount(ctx, CreateServiceAccountRequest{
-		ProjectID: projectID,
-		Name:      "expiration-test-account",
+	svcAcc, err := client.CreateServiceAccount(ctx, projectID, CreateServiceAccountRequest{
+		Name: "expiration-test-account",
 	})
 	require.NoError(t, err)
 

@@ -19,10 +19,12 @@ const (
 	// Default API endpoint for OpenAI
 	DefaultAPIEndpoint = "https://api.openai.com/v1"
 
-	// API endpoints - without leading slash as DefaultAPIEndpoint already includes /v1
-	projectsEndpoint        = "projects"
-	serviceAccountsEndpoint = "service_accounts"
-	apiKeysEndpoint         = "api_keys"
+	// API endpoints - now with /organization prefix as per OpenAI docs
+	organizationPrefix         = "/organization"
+	adminAPIKeysEndpoint       = organizationPrefix + "/admin_api_keys"
+	projectsEndpoint           = organizationPrefix + "/projects"
+	serviceAccountsEndpointFmt = organizationPrefix + "/projects/%s/service_accounts"
+	apiKeysEndpoint            = organizationPrefix + "/api_keys"
 )
 
 // Client represents an OpenAI API client
@@ -73,7 +75,8 @@ type APIKey struct {
 
 // CreateServiceAccountRequest represents a request to create a service account
 type CreateServiceAccountRequest struct {
-	ProjectID   string `json:"project_id"`
+	// ProjectID is moved to a parameter in the CreateServiceAccount method
+	// and should not be part of the JSON body
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 }
@@ -195,9 +198,9 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 }
 
 // CreateServiceAccount creates a new project service account
-func (c *Client) CreateServiceAccount(ctx context.Context, req CreateServiceAccountRequest) (*ServiceAccount, error) {
+func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, error) {
 	// Validate inputs
-	if req.ProjectID == "" {
+	if projectID == "" {
 		return nil, fmt.Errorf("project ID is required")
 	}
 
@@ -215,20 +218,17 @@ func (c *Client) CreateServiceAccount(ctx context.Context, req CreateServiceAcco
 
 	// Log creation attempt
 	c.logger.Debug("Creating service account",
-		"project_id", req.ProjectID,
+		"project_id", projectID,
 		"name", req.Name,
 		"description", req.Description)
 
 	// Construct the path for creating a service account
-	path := fmt.Sprintf("/%s/%s/%s",
-		projectsEndpoint,
-		req.ProjectID,
-		serviceAccountsEndpoint)
+	path := fmt.Sprintf(serviceAccountsEndpointFmt, projectID)
 
 	respBody, err := c.doRequest(ctx, http.MethodPost, path, req)
 	if err != nil {
 		c.logger.Error("Failed to create service account",
-			"project_id", req.ProjectID,
+			"project_id", projectID,
 			"name", req.Name,
 			"error", err)
 		return nil, fmt.Errorf("error creating service account: %w", err)
@@ -268,11 +268,7 @@ func (c *Client) DeleteServiceAccount(ctx context.Context, id string, projectID 
 		"project_id", projectID[0])
 
 	// Construct the path for deleting a service account
-	path := fmt.Sprintf("/%s/%s/%s/%s",
-		projectsEndpoint,
-		projectID[0],
-		serviceAccountsEndpoint,
-		id)
+	path := fmt.Sprintf(serviceAccountsEndpointFmt+"/%s", projectID[0], id)
 
 	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
@@ -307,7 +303,7 @@ func (c *Client) CreateAPIKey(ctx context.Context, req CreateAPIKeyRequest) (*AP
 		"name", req.Name,
 		"expires_at", req.ExpiresAt)
 
-	path := fmt.Sprintf("/%s", apiKeysEndpoint)
+	path := apiKeysEndpoint
 	respBody, err := c.doRequest(ctx, http.MethodPost, path, req)
 	if err != nil {
 		c.logger.Error("Failed to create API key",
@@ -345,7 +341,7 @@ func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
 	// Log deletion attempt
 	c.logger.Debug("Deleting API key", "api_key_id", id)
 
-	path := fmt.Sprintf("/%s/%s", apiKeysEndpoint, id)
+	path := fmt.Sprintf(apiKeysEndpoint+"/%s", id)
 	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		c.logger.Error("Failed to delete API key",
@@ -375,11 +371,7 @@ func (c *Client) GetServiceAccount(ctx context.Context, id string, projectID str
 		"project_id", projectID)
 
 	// Construct the path for retrieving a service account
-	path := fmt.Sprintf("/%s/%s/%s/%s",
-		projectsEndpoint,
-		projectID,
-		serviceAccountsEndpoint,
-		id)
+	path := fmt.Sprintf(serviceAccountsEndpointFmt+"/%s", projectID, id)
 
 	respBody, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -410,8 +402,7 @@ func (c *Client) ListServiceAccounts(ctx context.Context, projectID string) ([]*
 	if projectID == "" {
 		return nil, fmt.Errorf("project ID is required")
 	}
-
-	path := fmt.Sprintf("/%s/%s/%s", projectsEndpoint, projectID, serviceAccountsEndpoint)
+	path := fmt.Sprintf(serviceAccountsEndpointFmt, projectID)
 	respBody, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -436,9 +427,9 @@ func (c *Client) CreateAdminAPIKey(ctx context.Context, name string) (string, er
 	if name == "" {
 		return "", fmt.Errorf("admin API key name is required")
 	}
-	// Per OpenAI docs: POST /admin_api_keys
+	// Per OpenAI docs: POST /organization/admin_api_keys
 	body := map[string]interface{}{"name": name}
-	respBody, err := c.doRequest(ctx, http.MethodPost, "/admin_api_keys", body)
+	respBody, err := c.doRequest(ctx, http.MethodPost, adminAPIKeysEndpoint, body)
 	if err != nil {
 		return "", fmt.Errorf("error creating admin API key: %w", err)
 	}
@@ -460,8 +451,8 @@ func (c *Client) RevokeAdminAPIKey(ctx context.Context, keyID string) error {
 	if keyID == "" {
 		return fmt.Errorf("admin API key ID is required")
 	}
-	// Per OpenAI docs: DELETE /admin_api_keys/{admin_api_key_id}
-	path := fmt.Sprintf("/admin_api_keys/%s", keyID)
+	// Per OpenAI docs: DELETE /organization/admin_api_keys/{admin_api_key_id}
+	path := fmt.Sprintf(adminAPIKeysEndpoint+"/%s", keyID)
 	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("error revoking admin API key: %w", err)
@@ -471,7 +462,7 @@ func (c *Client) RevokeAdminAPIKey(ctx context.Context, keyID string) error {
 
 // ListAdminAPIKeys lists all admin API keys
 func (c *Client) ListAdminAPIKeys(ctx context.Context) ([]map[string]interface{}, error) {
-	respBody, err := c.doRequest(ctx, http.MethodGet, "/admin_api_keys", nil)
+	respBody, err := c.doRequest(ctx, http.MethodGet, adminAPIKeysEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error listing admin API keys: %w", err)
 	}
@@ -493,12 +484,14 @@ func (c *Client) TestConnection(ctx context.Context) error {
 	return nil
 }
 
-// ValidateProject checks if the given project ID is valid by attempting to list service accounts for the project.
+// ValidateProject checks if the given project ID is valid by retrieving the project details from OpenAI.
 func (c *Client) ValidateProject(ctx context.Context, projectID string) error {
 	if projectID == "" {
 		return fmt.Errorf("project_id is required")
 	}
-	_, err := c.ListServiceAccounts(ctx, projectID)
+	// Use the OpenAI projects retrieve endpoint per docs: /organization/projects/{project_id}
+	path := fmt.Sprintf(projectsEndpoint+"/%s", projectID)
+	_, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return fmt.Errorf("OpenAI project validation failed: %w", err)
 	}
