@@ -33,7 +33,7 @@ test:
 	@echo "Running tests..."
 	./scripts/run_tests.sh
 
-test-integration:
+test-integration: build
 	@echo "Running tests with integration..."
 	./scripts/run_tests.sh --integration
 
