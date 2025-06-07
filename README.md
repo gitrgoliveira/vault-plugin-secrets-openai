@@ -171,8 +171,8 @@ Parameters:
 - `admin_api_key_id` - (Required for POST/PUT) Admin API key ID for OpenAI
 - `organization_id` - (Required for POST/PUT) Organization ID for OpenAI
 - `api_endpoint` - (Optional) URL for the OpenAI API (default: https://api.openai.com/v1)
-- `automatic_rotation_period` - (Optional) Period in seconds between automatic rotations
-- `automatic_rotation_window` - (Optional) Window in seconds during which rotation can occur
+- `rotation_period` - (Optional) Period in seconds between automatic admin API key rotations
+- `rotation_window` - (Optional) Window in seconds during which rotation can occur
 
 Example Create/Update:
 ```shell
@@ -180,7 +180,7 @@ vault write openai/config \
   admin_api_key="sk-admin-..." \
   admin_api_key_id="admin-key-id-..." \
   organization_id="org-123456" \
-  automatic_rotation_period=604800
+  rotation_period=604800
 ```
 
 Example Read:
@@ -193,7 +193,7 @@ Output:
 Key                        Value
 ---                        -----
 api_endpoint               https://api.openai.com/v1
-automatic_rotation_period  604800
+rotation_period            604800
 last_rotated               2025-06-01T12:00:00Z
 organization_id            org-123456
 ```
