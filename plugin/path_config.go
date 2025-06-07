@@ -180,8 +180,9 @@ func (b *backend) pathConfigRead(ctx context.Context, req *logical.Request, data
 	}
 
 	respData := map[string]interface{}{
-		"api_endpoint":    config.APIEndpoint,
-		"organization_id": config.OrganizationID,
+		"api_endpoint":     config.APIEndpoint,
+		"organization_id":  config.OrganizationID,
+		"admin_api_key_id": config.AdminAPIKeyID,
 	}
 
 	// Add automated rotation parameters to the response

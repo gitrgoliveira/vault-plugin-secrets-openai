@@ -26,6 +26,13 @@ if [ "$1" == "--integration" ]; then
     if [ -z "$OPENAI_TEST_PROJECT_ID" ]; then
         read -p "Enter your OpenAI Test Project ID: " OPENAI_TEST_PROJECT_ID
     fi
+
+    # Check if required environment variables are set
+    if [ -z "$OPENAI_ADMIN_API_KEY" ] || [ -z "$OPENAI_ORG_ID" ] || [ -z "$OPENAI_TEST_PROJECT_ID" ]; then
+        echo "❌ ERROR: OPENAI_ADMIN_API_KEY, OPENAI_ORG_ID, and OPENAI_TEST_PROJECT_ID are required for integration tests."
+        exit 1
+    fi
+    
     export VAULT_ADDR=http://127.0.0.1:8200
     export VAULT_TOKEN=root
     vault server -dev -dev-root-token-id=root \
@@ -52,14 +59,33 @@ if [ "$1" == "--integration" ]; then
     fi
     # Register and enable the plugin
     vault secrets enable -path=openai -plugin-name=vault-plugin-secrets-openai plugin
-    # Configure the plugin
-    vault write openai/config admin_api_key="$OPENAI_ADMIN_API_KEY" organization_id="$OPENAI_ORG_ID"
+    # Get the admin API key ID using the OpenAI API (match prefix and suffix)
+    KEY_PREFIX="${OPENAI_ADMIN_API_KEY:0:8}"
+    KEY_SUFFIX="${OPENAI_ADMIN_API_KEY: -4}"
+    ADMIN_API_KEY_ID=$(curl -s https://api.openai.com/v1/organization/admin_api_keys \
+      -H "Authorization: Bearer $OPENAI_ADMIN_API_KEY" \
+      -H "Content-Type: application/json" | \
+      jq -r --arg prefix "$KEY_PREFIX" --arg suffix "$KEY_SUFFIX" \
+        '.data[] | select(.redacted_value | startswith($prefix) and endswith($suffix)) | .id' | head -n1)
+    if [ -z "$ADMIN_API_KEY_ID" ]; then
+      echo "❌ ERROR: Could not determine admin API key ID from OpenAI API."
+      exit 1
+    fi
+    # Configure the plugin with both admin_api_key and admin_api_key_id
+    vault write openai/config admin_api_key="$OPENAI_ADMIN_API_KEY" admin_api_key_id="$ADMIN_API_KEY_ID" organization_id="$OPENAI_ORG_ID"
+    # Rotate the OpenAI admin API key (simulate rotation)
+    echo "Rotating OpenAI admin API key..."
+    vault write -force openai/config/rotate
+    vault write -force openai/config/rotate
     # Register a test project
     vault write openai/project/test-project project_id="$OPENAI_TEST_PROJECT_ID" description="Test Project"
     # Create a test role
-    vault write openai/roles/test-role project="test-project" service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" service_account_description="Test service account" ttl=1h max_ttl=24h
+    vault write openai/roles/test-role project="test-project" \
+        service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
+        service_account_description="Test service account" ttl=5s max_ttl=24h
     # Issue dynamic credentials
     vault read openai/creds/test-role
+    sleep 10
 fi
 
 

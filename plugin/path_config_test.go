@@ -32,10 +32,11 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 	// Create config (all required fields present)
 	createData := &framework.FieldData{
 		Raw: map[string]interface{}{
-			"admin_api_key":   "test-key",
-			"organization_id": "org-123",
-			"api_endpoint":    "https://api.test.com/v1",
-			"rotation_period": 0, // Required field
+			"admin_api_key":    "test-key",
+			"admin_api_key_id": "test-admin-key-id",
+			"organization_id":  "org-123",
+			"api_endpoint":     "https://api.test.com/v1",
+			"rotation_period":  0, // Required field
 		},
 		Schema: b.pathAdminConfig()[1].Fields,
 	}
@@ -69,10 +70,10 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 	assert.Equal(t, "org-123", resp.Data["organization_id"])
 	assert.NotContains(t, resp.Data, "admin_api_key", "admin_api_key should not be returned")
 	// AdminAPIKeyID should be present in read response and persist in config
-	assert.Equal(t, "", resp.Data["admin_api_key_id"])
+	assert.Equal(t, "test-admin-key-id", resp.Data["admin_api_key_id"])
 	config, err := getConfig(ctx, storage)
 	require.NoError(t, err)
-	assert.Equal(t, "", config.AdminAPIKeyID)
+	assert.Equal(t, "test-admin-key-id", config.AdminAPIKeyID)
 
 	// Update config with AdminAPIKeyID
 	updateData := &framework.FieldData{
