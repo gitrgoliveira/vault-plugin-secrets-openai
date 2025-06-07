@@ -102,7 +102,7 @@ func TestClient_CreateServiceAccount(t *testing.T) {
 			ServiceAccount: &mockSvcAccount,
 			APIKey: &APIKey{
 				ID:           "key_123",
-				Key:          "sk-test",
+				Value:        "sk-test",
 				ServiceAccID: mockSvcAccount.ID,
 			},
 		}

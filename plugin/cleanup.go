@@ -244,17 +244,6 @@ func (c *CleanupManager) getActiveLeases(ctx context.Context, projectID string) 
 
 	// For each role, check the project ID and get the service account IDs
 	for _, roleName := range rolesList {
-		// Get role entry
-		roleEntry, err := c.backend.getStaticRole(ctx, storage, roleName)
-		if err != nil {
-			c.backend.Logger().Error("Error retrieving role", "role", roleName, "error", err)
-			continue
-		}
-
-		if roleEntry == nil || roleEntry.ProjectID != projectID {
-			continue
-		}
-
 		// List all leases for this role
 		leaseIDs, err := c.getLeaseIDsForRole(ctx, roleName, storage)
 		if err != nil {

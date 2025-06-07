@@ -30,7 +30,7 @@ func (m *mockClient) CreateServiceAccount(ctx context.Context, projectID string,
 		return m.createServiceAccountFn(ctx, projectID, req)
 	}
 	serviceAccount := &ServiceAccount{ID: "svc-123", Name: req.Name, ProjectID: projectID}
-	apiKey := &APIKey{ID: "key-123", Key: "sk-test", ServiceAccID: serviceAccount.ID}
+	apiKey := &APIKey{ID: "key-123", Value: "sk-test", ServiceAccID: serviceAccount.ID}
 	return serviceAccount, apiKey, nil
 }
 func (m *mockClient) DeleteServiceAccount(ctx context.Context, id string, projectID ...string) error {
@@ -88,23 +88,6 @@ func getTestBackend(t *testing.T) *backend {
 	require.NoError(t, err)
 
 	return b
-}
-
-// getTestBackendAndStorage returns a backend and storage for tests that need both
-func getTestBackendAndStorage(t *testing.T) (*backend, logical.Storage) {
-	b := Backend()
-	config := logical.TestBackendConfig()
-	config.Logger = hclog.NewNullLogger()
-	config.System = &logical.StaticSystemView{
-		DefaultLeaseTTLVal: defaultTTL,
-		MaxLeaseTTLVal:     maxTTL,
-	}
-	config.StorageView = &logical.InmemStorage{}
-
-	err := b.Setup(context.Background(), config)
-	require.NoError(t, err)
-
-	return b, config.StorageView
 }
 
 // getTestStorage returns an in-memory storage for testing.

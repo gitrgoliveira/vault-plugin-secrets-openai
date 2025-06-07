@@ -382,7 +382,7 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 
 	// Generate the response
 	resp := b.Secret(dynamicSecretCredsType).Response(map[string]interface{}{
-		"api_key":            apiKey.Key,
+		"api_key":            apiKey.Value,
 		"api_key_id":         apiKey.ID,
 		"service_account_id": svcAccount.ID,
 		"service_account":    svcAccount.Name,

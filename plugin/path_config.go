@@ -24,6 +24,7 @@ const (
 // Only supports the current OpenAI API model and automated rotation.
 type openaiConfig struct {
 	AdminAPIKey     string    `json:"admin_api_key"`
+	AdminAPIKeyID   string    `json:"admin_api_key_id"`
 	APIEndpoint     string    `json:"api_endpoint"`
 	OrganizationID  string    `json:"organization_id"`
 	LastRotatedTime time.Time `json:"last_rotated_time"`
@@ -57,6 +58,11 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 						DisplayAttrs: &framework.DisplayAttributes{
 							Sensitive: true,
 						},
+					},
+					"admin_api_key_id": {
+						Type:        framework.TypeString,
+						Description: "ID of the admin API key used to manage project service accounts and API keys",
+						Required:    true,
 					},
 					"organization_id": {
 						Type:        framework.TypeString,
@@ -211,8 +217,16 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		config.AdminAPIKey = adminAPIKey.(string)
 	}
 
+	adminAPIKeyID, ok := data.GetOk("admin_api_key_id")
+	if ok {
+		config.AdminAPIKeyID = adminAPIKeyID.(string)
+	}
+
 	if config.AdminAPIKey == "" {
 		return logical.ErrorResponse("admin_api_key is required"), nil
+	}
+	if config.AdminAPIKeyID == "" {
+		return logical.ErrorResponse("admin_api_key_id is required"), nil
 	}
 
 	organizationID, ok := data.GetOk("organization_id")
@@ -247,6 +261,7 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	client := NewClient(config.AdminAPIKey, b.Logger())
 	clientConfig := &Config{
 		AdminAPIKey:    config.AdminAPIKey,
+		AdminAPIKeyID:  config.AdminAPIKeyID,
 		APIEndpoint:    config.APIEndpoint,
 		OrganizationID: config.OrganizationID,
 	}
@@ -458,35 +473,8 @@ func (b *backend) listRolesForProject(ctx context.Context, s logical.Storage, pr
 		return []string{}, nil
 	}
 
-	// Get the project ID which is what's stored in the roles
-	projectID := project.ProjectID
-
-	// List all static roles
-	rolesList, err := s.List(ctx, "static-roles/")
-	if err != nil {
-		return nil, fmt.Errorf("error listing roles: %w", err)
-	}
-
-	// Check each role to see if it uses this project's ID
-	var result []string
-	for _, roleName := range rolesList {
-		role, err := b.getStaticRole(ctx, s, roleName)
-		if err != nil {
-			return nil, fmt.Errorf("error checking role %s: %w", roleName, err)
-		}
-
-		// Skip if we couldn't load the role
-		if role == nil {
-			continue
-		}
-
-		// Add to result if project ID matches
-		if role.ProjectID == projectID {
-			result = append(result, roleName)
-		}
-	}
-
-	return result, nil
+	// Static roles are no longer supported, so just return an empty list
+	return []string{}, nil
 }
 
 const confHelpSyn = `

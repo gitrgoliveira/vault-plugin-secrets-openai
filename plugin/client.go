@@ -32,6 +32,7 @@ type Client struct {
 	httpClient     *http.Client
 	apiEndpoint    string
 	adminAPIKey    string
+	adminAPIKeyID  string
 	organizationID string
 	logger         hclog.Logger
 }
@@ -48,8 +49,10 @@ func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
 }
 
 // Config contains configuration for the OpenAI client
+// Add AdminAPIKeyID to track the key's ID for revocation
 type Config struct {
 	AdminAPIKey    string `json:"admin_api_key"`
+	AdminAPIKeyID  string `json:"admin_api_key_id,omitempty"`
 	APIEndpoint    string `json:"api_endpoint"`
 	OrganizationID string `json:"organization_id"`
 }
@@ -86,7 +89,7 @@ func (sa *ServiceAccount) GetCreatedAt() *time.Time {
 // APIKey represents an OpenAI API key
 type APIKey struct {
 	ID           string    `json:"id"`
-	Key          string    `json:"key,omitempty"` // Only available when creating a new key
+	Value        string    `json:"value,omitempty"`
 	Name         string    `json:"name"`
 	ServiceAccID string    `json:"service_account_id"`
 	CreatedAt    *UnixTime `json:"created_at,omitempty"`
@@ -142,6 +145,7 @@ func (c *Client) SetConfig(config *Config) error {
 	}
 
 	c.adminAPIKey = config.AdminAPIKey
+	c.adminAPIKeyID = config.AdminAPIKeyID
 	c.organizationID = config.OrganizationID
 
 	if config.APIEndpoint != "" {
@@ -285,30 +289,73 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 		return nil, nil, fmt.Errorf("error creating service account: %w", err)
 	}
 
-	// Unmarshal both service account and API key from response
-	var resp ServiceAccountResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		c.logger.Error("Failed to parse service account response",
-			"error", err,
-			"response", string(respBody))
-		return nil, nil, fmt.Errorf("error parsing service account response: %w", err)
+	// Parse the exact OpenAI API response format
+	var raw map[string]interface{}
+	if err := json.Unmarshal(respBody, &raw); err == nil {
+		// Initialize service account
+		var svc *ServiceAccount
+
+		// Try to extract from service_account field (nested structure)
+		if serviceAccountData, ok := raw["service_account"].(map[string]interface{}); ok {
+			svc = &ServiceAccount{
+				ID:          asString(serviceAccountData["id"]),
+				Name:        asString(serviceAccountData["name"]),
+				ProjectID:   projectID, // Ensure projectID is set
+				Description: asString(serviceAccountData["description"]),
+			}
+
+			if created, ok := serviceAccountData["created_at"].(float64); ok {
+				t := time.Unix(int64(created), 0)
+				svc.CreatedAt = UnixTimePtr(&t)
+			}
+		} else {
+			// Fallback to flat structure
+			svc = &ServiceAccount{
+				ID:        asString(raw["id"]),
+				Name:      asString(raw["name"]),
+				ProjectID: projectID, // Ensure projectID is set
+			}
+
+			if created, ok := raw["created_at"].(float64); ok {
+				t := time.Unix(int64(created), 0)
+				svc.CreatedAt = UnixTimePtr(&t)
+			}
+		}
+
+		// Extract the API key from the response
+		if apiKeyData, ok := raw["api_key"].(map[string]interface{}); ok {
+			secretKey := asString(apiKeyData["value"])
+
+			apiKey := &APIKey{
+				ID:           asString(apiKeyData["id"]),
+				Value:        secretKey,
+				Name:         asString(apiKeyData["name"]),
+				ServiceAccID: svc.ID,
+			}
+
+			if created, ok := apiKeyData["created_at"].(float64); ok {
+				t := time.Unix(int64(created), 0)
+				apiKey.CreatedAt = UnixTimePtr(&t)
+			}
+
+			c.logger.Info("Created service account with API key successfully",
+				"service_account_id", svc.ID,
+				"project_id", projectID,
+				"name", svc.Name,
+				"api_key_id", apiKey.ID)
+			return svc, apiKey, nil
+		}
 	}
 
-	if resp.ServiceAccount == nil {
-		return nil, nil, fmt.Errorf("service account data missing in API response")
+	return nil, nil, fmt.Errorf("service account data missing in API response")
+}
+
+// Helper for fallback parsing
+func asString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
 	}
-
-	if resp.APIKey == nil {
-		return nil, nil, fmt.Errorf("API key data missing in API response")
-	}
-
-	c.logger.Info("Created service account with API key successfully",
-		"service_account_id", resp.ServiceAccount.ID,
-		"project_id", resp.ServiceAccount.ProjectID,
-		"name", resp.ServiceAccount.Name,
-		"api_key_id", resp.APIKey.ID)
-
-	return resp.ServiceAccount, resp.APIKey, nil
+	return ""
 }
 
 // DeleteServiceAccount deletes a service account by ID
@@ -441,28 +488,34 @@ func (c *Client) ListServiceAccounts(ctx context.Context, projectID string) ([]*
 	return accounts, nil
 }
 
-// CreateAdminAPIKey creates a new admin API key
-func (c *Client) CreateAdminAPIKey(ctx context.Context, name string) (string, error) {
+// CreateAdminAPIKey creates a new admin API key and returns its value and ID
+func (c *Client) CreateAdminAPIKey(ctx context.Context, name string) (string, string, error) {
 	if name == "" {
-		return "", fmt.Errorf("admin API key name is required")
+		return "", "", fmt.Errorf("admin API key name is required")
 	}
 	// Per OpenAI docs: POST /organization/admin_api_keys
 	body := map[string]interface{}{"name": name}
 	respBody, err := c.doRequest(ctx, http.MethodPost, adminAPIKeysEndpoint, body)
 	if err != nil {
-		return "", fmt.Errorf("error creating admin API key: %w", err)
+		return "", "", fmt.Errorf("error creating admin API key: %w", err)
 	}
 	var result struct {
-		ID  string `json:"id"`
-		Key string `json:"key"`
+		Object        string `json:"object"`
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Value         string `json:"value"`
+		CreatedAt     int64  `json:"created_at"`
+		LastUsedAt    int64  `json:"last_used_at"`
+		RedactedValue string `json:"redacted_value"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("error parsing admin API key response: %w", err)
+		return "", "", fmt.Errorf("error parsing admin API key response: %w", err)
 	}
-	if result.Key == "" {
-		return "", fmt.Errorf("admin API key not returned in response")
+
+	if result.Value == "" || result.ID == "" {
+		return "", "", fmt.Errorf("admin API key or ID not returned in response")
 	}
-	return result.Key, nil
+	return result.Value, result.ID, nil
 }
 
 // RevokeAdminAPIKey revokes the given admin API key
@@ -474,7 +527,7 @@ func (c *Client) RevokeAdminAPIKey(ctx context.Context, keyID string) error {
 	path := fmt.Sprintf(adminAPIKeysEndpoint+"/%s", keyID)
 	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return fmt.Errorf("error revoking admin API key: %w", err)
+		return fmt.Errorf("error revoking admin API key %s: %w", keyID, err)
 	}
 	return nil
 }
@@ -515,4 +568,21 @@ func (c *Client) ValidateProject(ctx context.Context, projectID string) error {
 		return fmt.Errorf("OpenAI project validation failed: %w", err)
 	}
 	return nil
+}
+
+// GetAdminAPIKey retrieves details for a specific admin API key by ID.
+func (c *Client) GetAdminAPIKey(ctx context.Context, keyID string) (map[string]interface{}, error) {
+	if keyID == "" {
+		return nil, fmt.Errorf("admin API key ID is required")
+	}
+	path := fmt.Sprintf(adminAPIKeysEndpoint+"/%s", keyID)
+	respBody, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving admin API key details: %w", err)
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("error parsing admin API key details: %w", err)
+	}
+	return result, nil
 }

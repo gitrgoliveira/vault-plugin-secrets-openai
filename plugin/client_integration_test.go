@@ -54,7 +54,7 @@ func TestClientIntegration_CompleteWorkflow(t *testing.T) {
 	// Verify the API key was created with the service account
 	require.NotNil(t, apiKey)
 	assert.NotEmpty(t, apiKey.ID)
-	assert.NotEmpty(t, apiKey.Key) // Key should be available on creation
+	assert.NotEmpty(t, apiKey.Value) // API key value should be available on creation
 	assert.Equal(t, svcAcc.ID, apiKey.ServiceAccID)
 
 	// 2. Retrieve the service account

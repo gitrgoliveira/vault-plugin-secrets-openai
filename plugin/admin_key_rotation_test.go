@@ -25,10 +25,11 @@ func TestAdminKeyRotation_Manual(t *testing.T) {
 
 	// Initial config with mock server URL
 	configData := map[string]interface{}{
-		"admin_api_key":   "test-key",
-		"organization_id": "org-123",
-		"api_endpoint":    mockServer.URL() + "/v1",
-		"rotation_period": 0, // Required field
+		"admin_api_key":    "test-key",
+		"admin_api_key_id": "test-admin-key-id",
+		"organization_id":  "org-123",
+		"api_endpoint":     mockServer.URL() + "/v1",
+		"rotation_period":  0, // Required field
 	}
 	fd := &framework.FieldData{Raw: configData, Schema: b.pathAdminConfig()[1].Fields}
 	_, err := b.pathConfigWrite(ctx, &logical.Request{Storage: storage}, fd)
@@ -69,10 +70,11 @@ func TestAdminKeyRotation_Schedule(t *testing.T) {
 
 	// Initial config with mock server URL and rotation period
 	configData := map[string]interface{}{
-		"admin_api_key":   "test-key",
-		"organization_id": "org-123",
-		"api_endpoint":    mockServer.URL() + "/v1",
-		"rotation_period": 1, // 1 second for test
+		"admin_api_key":    "test-key",
+		"admin_api_key_id": "test-admin-key-id",
+		"organization_id":  "org-123",
+		"api_endpoint":     mockServer.URL() + "/v1",
+		"rotation_period":  1, // 1 second for test
 	}
 
 	// Need to use the correct schema for the test
@@ -114,10 +116,11 @@ func TestAdminKeyRotation_Automatic(t *testing.T) {
 
 	// Initial config with mock server URL and 1 second rotation period
 	configData := map[string]interface{}{
-		"admin_api_key":   "test-key",
-		"organization_id": "org-123",
-		"api_endpoint":    mockServer.URL() + "/v1",
-		"rotation_period": 1, // 1 second for test
+		"admin_api_key":    "test-key",
+		"admin_api_key_id": "test-admin-key-id",
+		"organization_id":  "org-123",
+		"api_endpoint":     mockServer.URL() + "/v1",
+		"rotation_period":  1, // 1 second for test
 	}
 
 	// Set up the config

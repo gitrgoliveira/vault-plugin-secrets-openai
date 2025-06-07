@@ -42,7 +42,6 @@ func Backend() *backend {
 		client:            nil, // Will be initialized during config
 		credRotationQueue: queue.New(),
 		roleLocks:         locksutil.CreateLocks(),
-		checkOutLocks:     locksutil.CreateLocks(),
 		managedUsers:      make(map[string]struct{}),
 	}
 
@@ -54,7 +53,6 @@ func Backend() *backend {
 			},
 			SealWrapStorage: []string{
 				configPath,
-				staticRolePath + "*",
 				// Add any other sensitive storage paths here
 			},
 		},
@@ -63,19 +61,11 @@ func Backend() *backend {
 			b.pathProjectConfig(),
 			b.pathDynamicSvcAccount(),
 			b.pathDynamicCredsCreate(),
-			b.pathStaticRoles(),
-			b.pathListSets(),
-			b.pathSets(),
-			b.pathSetCheckOut(),
-			b.pathSetCheckIn(),
-			b.pathSetManageCheckIn(),
-			b.pathSetStatus(),
 			b.paths(), // Add any additional paths (e.g., admin key rotation)
 		),
 		InitializeFunc: b.initialize,
 		Secrets: []*framework.Secret{
 			dynamicSecretCreds(b),
-			checkoutSecretCreds(b),
 		},
 		Clean:       b.clean,
 		BackendType: logical.TypeLogical,
@@ -120,7 +110,7 @@ func (b *backend) initialize(ctx context.Context, initRequest *logical.Initializ
 		b.cleanupManager.Start()
 		b.Logger().Info("Started cleanup manager for orphaned service accounts")
 
-		// Initialize the rotation queue for static roles
+		// Initialize the rotation queue for admin key rotation
 		b.initRotationQueue(ctx, initRequest.Storage)
 
 		// Check if admin key needs immediate rotation first
@@ -177,8 +167,8 @@ type backend struct {
 	// client is the OpenAI API client used to interact with the OpenAI API
 	client ClientAPI
 
-	// CredRotationQueue is an in-memory priority queue used to track Static Roles
-	// that require periodic rotation. Backends will have a PriorityQueue
+	// CredRotationQueue is an in-memory priority queue used to track admin key rotation.
+	// Backends will have a PriorityQueue
 	// initialized on setup, but only backends that are mounted by a primary
 	// server or mounted as a local mount will perform the rotations.
 	//
@@ -194,14 +184,7 @@ type backend struct {
 
 	// managedUsers contains the set of OpenAI service accounts managed by the secrets engine
 	// This is used to ensure that service accounts are not duplicated.
-	managedUsers    map[string]struct{}
-	managedUserLock sync.Mutex
-
-	// checkOutLocks are used for avoiding races when working with library sets
-	// in the check-in/check-out system.
-	checkOutLocks []*locksutil.LockEntry
-
-	// cleanupManager handles periodic cleanup of orphaned service accounts
+	managedUsers   map[string]struct{}
 	cleanupManager *CleanupManager
 	storageView    logical.Storage
 }

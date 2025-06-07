@@ -201,6 +201,9 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 	// Create a new service account
 	now := time.Now()
 	nowUnix := UnixTime(now)
+	unixTimestamp := now.Unix()
+
+	// Create the service account object according to the new format
 	svcAcc := &ServiceAccount{
 		ID:          fmt.Sprintf("svc_%s", generateRandomID(10)),
 		ProjectID:   projectID,
@@ -220,8 +223,8 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 	// Create an API key for the service account
 	apiKey := &APIKey{
 		ID:           fmt.Sprintf("key_%s", generateRandomID(10)),
-		Key:          fmt.Sprintf("sk-test-%s", generateRandomID(24)),
-		Name:         fmt.Sprintf("%s-key", req.Name),
+		Value:        fmt.Sprintf("sk-test-%s", generateRandomID(24)),
+		Name:         "Secret Key",
 		ServiceAccID: svcAcc.ID,
 		CreatedAt:    &nowUnix,
 	}
@@ -229,13 +232,20 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 	// Store the API key
 	m.apiKeys[apiKey.ID] = apiKey
 
-	// Create response with both service account and API key
-	response := struct {
-		ServiceAccount *ServiceAccount `json:"service_account"`
-		APIKey         *APIKey         `json:"api_key"`
-	}{
-		ServiceAccount: svcAcc,
-		APIKey:         apiKey,
+	// Format response to match the actual OpenAI API
+	response := map[string]interface{}{
+		"object":     "organization.project.service_account",
+		"id":         svcAcc.ID,
+		"name":       svcAcc.Name,
+		"role":       "member",
+		"created_at": unixTimestamp,
+		"api_key": map[string]interface{}{
+			"object":     "organization.project.service_account.api_key",
+			"id":         apiKey.ID,
+			"value":      apiKey.Value,
+			"name":       apiKey.Name,
+			"created_at": unixTimestamp,
+		},
 	}
 
 	// Return the created service account and API key
@@ -364,7 +374,7 @@ func (m *MockOpenAIServer) getAPIKey(w http.ResponseWriter, r *http.Request, key
 
 	// Create a copy without the key value (API doesn't return this after creation)
 	keyResponse := *apiKey
-	keyResponse.Key = ""
+	keyResponse.Value = ""
 
 	// Return the API key info
 	w.Header().Set("Content-Type", "application/json")
@@ -394,7 +404,7 @@ func (m *MockOpenAIServer) listAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 		// Create a copy without the key value
 		keyInfo := *key
-		keyInfo.Key = ""
+		keyInfo.Value = ""
 		keys = append(keys, keyInfo)
 	}
 
@@ -434,10 +444,21 @@ func (m *MockOpenAIServer) deleteAPIKey(w http.ResponseWriter, r *http.Request, 
 
 // Admin API key endpoints for mocking
 type adminAPIKey struct {
-	ID        string     `json:"id"`
-	Key       string     `json:"key,omitempty"`
-	Name      string     `json:"name"`
-	CreatedAt *time.Time `json:"created_at"`
+	Object        string `json:"object"`
+	ID            string `json:"id"`
+	Value         string `json:"value"`
+	Name          string `json:"name"`
+	RedactedValue string `json:"redacted_value"`
+	CreatedAt     int64  `json:"created_at"`
+	LastUsedAt    int64  `json:"last_used_at"`
+	Owner         struct {
+		Type      string `json:"type"`
+		Object    string `json:"object"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		CreatedAt int64  `json:"created_at"`
+		Role      string `json:"role"`
+	} `json:"owner"`
 }
 
 // createAdminAPIKey handles admin API key creation requests
@@ -458,12 +479,24 @@ func (m *MockOpenAIServer) createAdminAPIKey(w http.ResponseWriter, r *http.Requ
 	}
 
 	now := time.Now()
+	nowUnix := now.Unix()
 	key := &adminAPIKey{
-		ID:        fmt.Sprintf("adminkey_%s", generateRandomID(10)),
-		Key:       fmt.Sprintf("sk-adminkey%s", generateRandomID(24)),
-		Name:      name,
-		CreatedAt: &now,
+		Object:        "organization.admin_api_key",
+		ID:            fmt.Sprintf("key_%s", generateRandomID(10)),
+		Value:         fmt.Sprintf("sk-adminkey%s", generateRandomID(24)),
+		Name:          name,
+		CreatedAt:     nowUnix,
+		LastUsedAt:    nowUnix,
+		RedactedValue: "sk-admin...xyz",
 	}
+
+	// Set owner data
+	key.Owner.Type = "user"
+	key.Owner.Object = "organization.user"
+	key.Owner.ID = "user_123"
+	key.Owner.Name = "Test User"
+	key.Owner.CreatedAt = nowUnix
+	key.Owner.Role = "owner"
 
 	// Return the created admin API key
 	w.Header().Set("Content-Type", "application/json")
@@ -482,13 +515,25 @@ func (m *MockOpenAIServer) listAdminAPIKeys(w http.ResponseWriter, r *http.Reque
 
 	// Return a sample list of admin API keys
 	now := time.Now()
+	nowUnix := now.Unix()
 	keys := []adminAPIKey{
 		{
-			ID:        "adminkey_sample",
-			Name:      "sample-admin-key",
-			CreatedAt: &now,
+			Object:        "organization.admin_api_key",
+			ID:            "key_sample",
+			Name:          "sample-admin-key",
+			CreatedAt:     nowUnix,
+			LastUsedAt:    nowUnix,
+			RedactedValue: "sk-admin...xyz",
 		},
 	}
+
+	// Set owner data for the sample key
+	keys[0].Owner.Type = "user"
+	keys[0].Owner.Object = "organization.user"
+	keys[0].Owner.ID = "user_123"
+	keys[0].Owner.Name = "Test User"
+	keys[0].Owner.CreatedAt = nowUnix
+	keys[0].Owner.Role = "owner"
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
