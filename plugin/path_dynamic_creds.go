@@ -360,8 +360,7 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	// Create service account (which automatically creates an API key in OpenAI API)
 	b.Logger().Debug("Creating service account with API key", "name", svcAccountName, "project", project.ProjectID)
 	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, project.ProjectID, CreateServiceAccountRequest{
-		Name:        svcAccountName,
-		Description: role.ServiceAccountDescription,
+		Name: svcAccountName,
 	})
 	if err != nil {
 		b.emitAPIErrorMetric("CreateServiceAccount", "error")

@@ -205,11 +205,10 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 
 	// Create the service account object according to the new format
 	svcAcc := &ServiceAccount{
-		ID:          fmt.Sprintf("svc_%s", generateRandomID(10)),
-		ProjectID:   projectID,
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedAt:   &nowUnix,
+		ID:        fmt.Sprintf("svc_%s", generateRandomID(10)),
+		ProjectID: projectID,
+		Name:      req.Name,
+		CreatedAt: &nowUnix,
 	}
 
 	// Initialize the project's service accounts map if it doesn't exist

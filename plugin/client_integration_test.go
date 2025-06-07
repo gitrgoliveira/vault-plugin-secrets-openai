@@ -42,8 +42,7 @@ func TestClientIntegration_CompleteWorkflow(t *testing.T) {
 
 	// 1. Create a service account (which also creates an API key automatically)
 	svcAcc, apiKey, err := client.CreateServiceAccount(ctx, projectID, CreateServiceAccountRequest{
-		Name:        "test-service-account",
-		Description: "Test service account for integration test",
+		Name: "test-service-account",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, svcAcc)
@@ -114,8 +113,7 @@ func TestClientIntegration_ErrorHandling(t *testing.T) {
 
 	// Set up a successful service account first
 	svcAcc, apiKey, err := client.CreateServiceAccount(ctx, projectID, CreateServiceAccountRequest{
-		Name:        "test-service-account",
-		Description: "Test service account for error handling test",
+		Name: "test-service-account",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, svcAcc)

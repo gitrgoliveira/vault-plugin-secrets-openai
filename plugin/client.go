@@ -58,12 +58,15 @@ type Config struct {
 }
 
 // ServiceAccount represents an OpenAI project service account
+// Updated: OpenAI does not support a description field for service accounts
+// Added Role field per API response
+// Removed Description field
 type ServiceAccount struct {
-	ID          string    `json:"id"`
-	ProjectID   string    `json:"project_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	CreatedAt   *UnixTime `json:"created_at,omitempty"`
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	Name      string    `json:"name"`
+	Role      string    `json:"role,omitempty"`
+	CreatedAt *UnixTime `json:"created_at,omitempty"`
 }
 
 // MarshalJSON implements custom marshaling for ServiceAccount
@@ -127,11 +130,10 @@ func (ak *APIKey) GetExpiresAt() *time.Time {
 }
 
 // CreateServiceAccountRequest represents a request to create a service account
+// Only Name is supported by OpenAI
+// Removed Description field
 type CreateServiceAccountRequest struct {
-	// ProjectID is moved to a parameter in the CreateServiceAccount method
-	// and should not be part of the JSON body
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	Name string `json:"name"`
 }
 
 // SetConfig updates the client configuration
@@ -274,8 +276,7 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 	// Log creation attempt
 	c.logger.Debug("Creating service account",
 		"project_id", projectID,
-		"name", req.Name,
-		"description", req.Description)
+		"name", req.Name)
 
 	// Construct the path for creating a service account
 	path := fmt.Sprintf(serviceAccountsEndpointFmt, projectID)
@@ -297,11 +298,12 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 
 		// Try to extract from service_account field (nested structure)
 		if serviceAccountData, ok := raw["service_account"].(map[string]interface{}); ok {
+			// Not expected for OpenAI, but fallback for future-proofing
 			svc = &ServiceAccount{
-				ID:          asString(serviceAccountData["id"]),
-				Name:        asString(serviceAccountData["name"]),
-				ProjectID:   projectID, // Ensure projectID is set
-				Description: asString(serviceAccountData["description"]),
+				ID:        asString(serviceAccountData["id"]),
+				Name:      asString(serviceAccountData["name"]),
+				ProjectID: projectID, // Ensure projectID is set
+				Role:      asString(serviceAccountData["role"]),
 			}
 
 			if created, ok := serviceAccountData["created_at"].(float64); ok {
@@ -309,11 +311,12 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 				svc.CreatedAt = UnixTimePtr(&t)
 			}
 		} else {
-			// Fallback to flat structure
+			// Flat structure (actual OpenAI response)
 			svc = &ServiceAccount{
 				ID:        asString(raw["id"]),
 				Name:      asString(raw["name"]),
 				ProjectID: projectID, // Ensure projectID is set
+				Role:      asString(raw["role"]),
 			}
 
 			if created, ok := raw["created_at"].(float64); ok {
@@ -342,6 +345,7 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 				"service_account_id", svc.ID,
 				"project_id", projectID,
 				"name", svc.Name,
+				"role", svc.Role,
 				"api_key_id", apiKey.ID)
 			return svc, apiKey, nil
 		}
