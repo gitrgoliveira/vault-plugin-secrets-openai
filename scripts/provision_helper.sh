@@ -21,11 +21,11 @@ PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secre
 
 echo "Registering plugin with Vault..."
 vault plugin runtime register -type=container -rootless=true -oci_runtime=runsc runsc
-
+# Register the plugin with Vault
 vault plugin register \
   -sha256="$PLUGIN_SHA256" \
   -oci_image="vault-plugin-secrets-openai" \
-  -runtime="runsc \
+  -runtime="runsc" \
   -version="1.0.0" \
   secret vault-plugin-secrets-openai
 
