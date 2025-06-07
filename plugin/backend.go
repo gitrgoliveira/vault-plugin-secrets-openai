@@ -58,7 +58,6 @@ func Backend() *backend {
 		},
 		Paths: framework.PathAppend(
 			b.pathAdminConfig(),
-			b.pathProjectConfig(),
 			b.pathDynamicSvcAccount(),
 			b.pathDynamicCredsCreate(),
 			b.paths(), // Add any additional paths (e.g., admin key rotation)

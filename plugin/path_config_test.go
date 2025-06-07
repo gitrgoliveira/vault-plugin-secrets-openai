@@ -19,9 +19,6 @@ func TestConfig_Paths(t *testing.T) {
 	paths := b.pathAdminConfig()
 	assert.Len(t, paths, 2, "expected 2 admin config paths")
 	assert.Equal(t, configPath, paths[1].Pattern, "unexpected admin config path pattern")
-
-	projectPaths := b.pathProjectConfig()
-	assert.Len(t, projectPaths, 2, "expected 2 project config paths")
 }
 
 func TestConfig_AdminConfig_CRUD(t *testing.T) {
@@ -111,65 +108,5 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 	require.Nil(t, resp)
 }
 
-func TestConfig_ProjectConfig_CRUD(t *testing.T) {
-	b := Backend()
-	storage := &logical.InmemStorage{}
-	ctx := context.Background()
-
-	// Create project
-	createData := &framework.FieldData{
-		Raw: map[string]interface{}{
-			"name":        "test-project",
-			"project_id":  "proj_123",
-			"description": "Test project description",
-		},
-		Schema: b.pathProjectConfig()[0].Fields,
-	}
-
-	// Initialize a mock client for testing
-	b.client = &mockClient{
-		listServiceAccountsFn: func(ctx context.Context, projectID string) ([]*ServiceAccount, error) {
-			return []*ServiceAccount{}, nil // Always succeed
-		},
-	}
-
-	// No need to use resp here
-	_, err := b.pathProjectWrite(ctx, &logical.Request{Storage: storage}, createData)
-	require.NoError(t, err)
-
-	// Read project
-	readData := &framework.FieldData{
-		Raw: map[string]interface{}{
-			"name": "test-project",
-		},
-		Schema: b.pathProjectConfig()[0].Fields,
-	}
-
-	resp, err := b.pathProjectRead(ctx, &logical.Request{Storage: storage}, readData)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	assert.Equal(t, "proj_123", resp.Data["project_id"])
-	assert.Equal(t, "Test project description", resp.Data["description"])
-
-	// List projects
-	resp, err = b.pathProjectList(ctx, &logical.Request{Storage: storage}, &framework.FieldData{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	assert.Equal(t, []string{"test-project"}, resp.Data["keys"])
-
-	// Delete project
-	deleteData := &framework.FieldData{
-		Raw: map[string]interface{}{
-			"name": "test-project",
-		},
-		Schema: b.pathProjectConfig()[0].Fields,
-	}
-
-	_, err = b.pathProjectDelete(ctx, &logical.Request{Storage: storage}, deleteData)
-	require.NoError(t, err)
-
-	// Read after delete
-	resp, err = b.pathProjectRead(ctx, &logical.Request{Storage: storage}, readData)
-	require.NoError(t, err)
-	require.Nil(t, resp)
-}
+// Remove all references to b.pathProjectConfig() and use the project path schema directly if needed.
+// In tests, replace b.pathProjectConfig() with the schema definition inline or use b.Backend.Paths if needed.

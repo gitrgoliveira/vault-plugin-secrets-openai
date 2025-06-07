@@ -5,7 +5,6 @@ package openaisecrets
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 
 const (
 	configPath     = "config"
-	projectPath    = "project"
 	rotationPrefix = "admin-key" // Used with rotation manager
 )
 
@@ -31,6 +29,14 @@ type openaiConfig struct {
 
 	// Automated rotation configuration
 	automatedrotationutil.AutomatedRotationParams
+}
+
+// projectEntry represents a stored project configuration
+// This is still required for dynamic role/project validation and cleanup.
+type projectEntry struct {
+	Name        string `json:"name"`
+	ProjectID   string `json:"project_id"`
+	Description string `json:"description,omitempty"`
 }
 
 // pathAdminConfig returns the path configuration for admin-level LDAP config endpoints
@@ -106,64 +112,6 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 			},
 			HelpSynopsis:    confHelpSyn,
 			HelpDescription: confHelpDesc,
-		},
-	}
-}
-
-// pathProjectConfig returns the path configuration for project-level config
-func (b *backend) pathProjectConfig() []*framework.Path {
-	return []*framework.Path{
-		{
-			Pattern: "project/" + framework.GenericNameRegex("name"),
-			Fields: map[string]*framework.FieldSchema{
-				"name": {
-					Type:        framework.TypeString,
-					Description: "Name of the OpenAI project",
-					Required:    true,
-				},
-				"project_id": {
-					Type:        framework.TypeString,
-					Description: "ID of the OpenAI project",
-					Required:    true,
-				},
-				"description": {
-					Type:        framework.TypeString,
-					Description: "Description of the project",
-				},
-			},
-
-			Operations: map[logical.Operation]framework.OperationHandler{
-				logical.ReadOperation: &framework.PathOperation{
-					Callback: b.pathProjectRead,
-					Summary:  "Read an OpenAI project configuration.",
-				},
-				logical.UpdateOperation: &framework.PathOperation{
-					Callback: b.pathProjectWrite,
-					Summary:  "Create or update an OpenAI project configuration.",
-				},
-				logical.CreateOperation: &framework.PathOperation{
-					Callback: b.pathProjectWrite,
-					Summary:  "Create or update an OpenAI project configuration.",
-				},
-				logical.DeleteOperation: &framework.PathOperation{
-					Callback: b.pathProjectDelete,
-					Summary:  "Delete an OpenAI project configuration.",
-				},
-			},
-			ExistenceCheck:  existenceCheckForNamedPath("name", projectStoragePath),
-			HelpSynopsis:    projectHelpSyn,
-			HelpDescription: projectHelpDesc,
-		},
-		{
-			Pattern: "project/?$",
-			Operations: map[logical.Operation]framework.OperationHandler{
-				logical.ListOperation: &framework.PathOperation{
-					Callback: b.pathProjectList,
-					Summary:  "List configured OpenAI projects.",
-				},
-			},
-			HelpSynopsis:    projectListHelpSyn,
-			HelpDescription: projectListHelpDesc,
 		},
 	}
 }
@@ -324,124 +272,10 @@ func getConfig(ctx context.Context, s logical.Storage) (*openaiConfig, error) {
 	return config, nil
 }
 
-// pathProjectRead reads a project configuration
-func (b *backend) pathProjectRead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	name := data.Get("name").(string)
-	if name == "" {
-		return logical.ErrorResponse("project name is required"), nil
-	}
-
-	project, err := b.getProject(ctx, req.Storage, name)
-	if err != nil {
-		return nil, err
-	}
-	if project == nil {
-		return nil, nil
-	}
-	return &logical.Response{
-		Data: map[string]interface{}{
-			"name":        project.Name,
-			"project_id":  project.ProjectID,
-			"description": project.Description,
-		},
-	}, nil
-}
-
-// pathProjectWrite writes a project configuration
-func (b *backend) pathProjectWrite(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	name := data.Get("name").(string)
-	if name == "" {
-		return logical.ErrorResponse("project name is required"), nil
-	}
-
-	projectID := data.Get("project_id").(string)
-	if projectID == "" {
-		return logical.ErrorResponse("project_id is required"), nil
-	}
-
-	description := data.Get("description").(string)
-
-	project := &projectEntry{
-		Name:        name,
-		ProjectID:   projectID,
-		Description: description,
-	}
-
-	// Validate the project ID with the OpenAI API
-	// In a test environment, we may not have a client configured
-	if b.client == nil && req.Operation != logical.ReadOperation {
-		return logical.ErrorResponse("OpenAI client not configured"), nil
-	}
-
-	// Validate the project ID if the client is available
-	if b.client != nil {
-		err := b.client.ValidateProject(ctx, projectID)
-		if err != nil {
-			return logical.ErrorResponse("project_id validation failed: %s", err), nil
-		}
-	}
-
-	entry, err := logical.StorageEntryJSON(projectStoragePath(name), project)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := req.Storage.Put(ctx, entry); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-// pathProjectDelete deletes a project configuration
-func (b *backend) pathProjectDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	name := data.Get("name").(string)
-	if name == "" {
-		return logical.ErrorResponse("project name is required"), nil
-	}
-
-	// Check if the project has any roles using it
-	roles, err := b.listRolesForProject(ctx, req.Storage, name)
-	if err != nil {
-		return nil, fmt.Errorf("error checking if project is in use: %w", err)
-	}
-	if len(roles) > 0 {
-		return logical.ErrorResponse("project has roles that use it, cannot delete"), nil
-	}
-
-	if err := req.Storage.Delete(ctx, projectStoragePath(name)); err != nil {
-		return nil, fmt.Errorf("error deleting project configuration: %w", err)
-	}
-
-	return nil, nil
-}
-
-// pathProjectList lists all project configurations
-func (b *backend) pathProjectList(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	projects, err := req.Storage.List(ctx, "project/")
-	if err != nil {
-		return nil, fmt.Errorf("error listing projects: %w", err)
-	}
-
-	return logical.ListResponse(projects), nil
-}
-
-// projectStoragePath returns the storage path for a project
-func projectStoragePath(name string) string {
-	return fmt.Sprintf("project/%s", name)
-}
-
-// projectEntry represents a stored project configuration
-type projectEntry struct {
-	Name        string `json:"name"`
-	ProjectID   string `json:"project_id"`
-	Description string `json:"description,omitempty"`
-}
-
 // getProject returns a project configuration by name
 func (b *backend) getProject(ctx context.Context, s logical.Storage, name string) (*projectEntry, error) {
 	if name == "" {
-		return nil, errors.New("project name is required")
+		return nil, fmt.Errorf("project name is required")
 	}
 
 	entry, err := s.Get(ctx, projectStoragePath(name))
@@ -461,21 +295,9 @@ func (b *backend) getProject(ctx context.Context, s logical.Storage, name string
 	return &project, nil
 }
 
-// listRolesForProject returns a list of roles that use this project
-func (b *backend) listRolesForProject(ctx context.Context, s logical.Storage, projectName string) ([]string, error) {
-	// First, get the project to find its project ID
-	project, err := b.getProject(ctx, s, projectName)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving project %q: %w", projectName, err)
-	}
-
-	if project == nil {
-		// Project doesn't exist, so no roles can be using it
-		return []string{}, nil
-	}
-
-	// Static roles are no longer supported, so just return an empty list
-	return []string{}, nil
+// projectStoragePath returns the storage path for a project
+func projectStoragePath(name string) string {
+	return fmt.Sprintf("project/%s", name)
 }
 
 const confHelpSyn = `
@@ -488,23 +310,4 @@ that can be used to manage project service accounts and API keys.
 
 The Admin API key specified must have sufficient permissions to create and
 manage project service accounts and their API keys.
-`
-
-const projectHelpSyn = `
-Configure an OpenAI project for use with the secrets engine.
-`
-
-const projectHelpDesc = `
-This endpoint configures an OpenAI project that can be used by the secrets engine
-for creating and managing project service accounts. You must provide the project ID
-that corresponds to a valid project in your OpenAI account.
-`
-
-const projectListHelpSyn = `
-List all configured OpenAI projects.
-`
-
-const projectListHelpDesc = `
-This endpoint lists all OpenAI projects that have been configured for use with
-the secrets engine.
 `
