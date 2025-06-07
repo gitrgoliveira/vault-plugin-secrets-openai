@@ -78,11 +78,11 @@ if [ "$1" == "--integration" ]; then
     vault write -force openai/config/rotate
     vault write -force openai/config/rotate
     # Register a test project
-    vault write openai/project/test-project project_id="$OPENAI_TEST_PROJECT_ID" description="Test Project"
+    vault write openai/project/test-project project_id="$OPENAI_TEST_PROJECT_ID"
     # Create a test role
     vault write openai/roles/test-role project="test-project" \
         service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
-        service_account_description="Test service account" ttl=5s max_ttl=24h
+        ttl=5s max_ttl=24h
     # Issue dynamic credentials
     vault read openai/creds/test-role
     sleep 10
