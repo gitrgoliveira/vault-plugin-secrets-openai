@@ -7,8 +7,6 @@ Use the repository of the Vault LDAP plugin as a reference for the implementatio
 
 As reference to implement the root config rotation use this repo https://github.com/hashicorp/vault-plugin-secrets-gcp
 
-Also implement a check-in/check-out mechanism for the service accounts, similar to the [Vault LDAP Secrets plugin](https://github.com/hashicorp/vault-plugin-secrets-openldap/)
-
 Other useful links:
 - [Vault LDAP Dynamic Secrets Documentation](https://developer.hashicorp.com/vault/docs/secrets/ldap)
  - [OpenAI authentication documentation](https://platform.openai.com/docs/api-reference/authentication)
