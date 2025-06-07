@@ -22,12 +22,13 @@ GO_VERSION="1.24.3"
 if ! go version 2>/dev/null | grep -q "go$GO_VERSION"; then
   echo "Upgrading Go to $GO_VERSION..."
   wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
-  sudo rm -rf /usr/local/go
+  sudo rm -rf $(which go)
   sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
   rm go${GO_VERSION}.linux-amd64.tar.gz
   export PATH=$PATH:/usr/local/go/bin
   echo 'export PATH=$PATH:/usr/local/go/bin' >> /home/vagrant/.bashrc
 fi
+source /home/vagrant/.bashrc
 go version
 
 # Install rootless Docker dependencies

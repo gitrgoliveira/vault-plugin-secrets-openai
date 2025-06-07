@@ -20,10 +20,13 @@ else
   echo "   See: https://gvisor.dev/docs/user_guide/install/"
   USE_RUNSC=false
 fi
+go mod tidy
+make build-release
 
 # 1. Build the Docker image for the plugin
 echo "[1/8] Building Docker image..."
-docker build -t vault-plugin-secrets-openai:latest .
+make release
+# docker build -t vault-plugin-secrets-openai:latest .
 
 # Verify the image was built successfully
 if [ $? -ne 0 ]; then
