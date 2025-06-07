@@ -10,7 +10,7 @@ This HashiCorp Vault plugin enables dynamic management of OpenAI service account
 - **Metrics and Monitoring**: Track credential issuance, revocation, and API errors
 - **Containerized Deployment**: Run as a containerized Vault plugin with Docker
 
-> **Note:** This plugin supports only dynamic service account credentials. Legacy features such as static roles and check-in/check-out APIs have been removed.
+> **Note:** This plugin supports only dynamic service account credentials.
 
 ## Quick Start
 
@@ -39,17 +39,12 @@ vault write openai/config \
   organization_id="org-123456"
 ```
 
-### Register a Project and Create a Role
+### Create a Role
 
 ```shell
-vault write openai/project/my-project \
-  project_id="proj_abc123" \
-  description="My OpenAI Project"
-
 vault write openai/roles/my-role \
   project="my-project" \
   service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
-  service_account_description="Service account created by Vault" \
   ttl=1h \
   max_ttl=24h
 ```
@@ -115,23 +110,12 @@ vault write openai/config \
   organization_id="org-123456"
 ```
 
-### Project Configuration
-
-Register an OpenAI project:
-
-```shell
-vault write openai/project/my-project \
-  project_id="proj_abc123" \
-  description="My OpenAI Project"
-```
-
 ### Create a Role
 
 ```shell
 vault write openai/roles/my-role \
   project="my-project" \
   service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
-  service_account_description="Service account created by Vault" \
   ttl=1h \
   max_ttl=24h
 ```
@@ -234,18 +218,6 @@ Success! Admin API key has been rotated.
 
 > **Note:** Only admin API key rotation is supported. The plugin manages the admin key lifecycle robustly; ensure you update both the key and key ID in the configuration when rotating.
 
-### Project API
-
-```
-POST /openai/project/:name
-GET /openai/project/:name
-GET /openai/project
-DELETE /openai/project/:name
-```
-
-- `project_id` - (Required) The ID of the OpenAI project
-- `description` - (Optional) Description of the project
-
 ### Dynamic Credentials API
 
 ```
@@ -259,16 +231,14 @@ GET /openai/creds/:role_name
 Parameters:
 - `project` - (Required) Project to use for this role
 - `service_account_name_template` - (Optional) Template for service account name creation
-- `service_account_description` - (Optional) Description for created service accounts
 - `ttl` - (Optional) Default TTL for generated API keys
 - `max_ttl` - (Optional) Maximum TTL for generated API keys
 
 Example:
 ```shell
 vault write openai/roles/analytics \
-  project="research-project" \
+  project="my-project" \
   service_account_name_template="analytics-{{.RoleName}}-{{.RandomSuffix}}" \
-  service_account_description="Analytics service account" \
   ttl=2h \
   max_ttl=24h
 ```
