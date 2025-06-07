@@ -99,9 +99,8 @@ func TestDynamicRoleEntry_Validation(t *testing.T) {
 	ctx := context.Background()
 
 	project := &projectEntry{
-		ProjectID:   "proj_123",
-		Name:        "test-project",
-		Description: "Test project",
+		ProjectID: "proj_123",
+		Name:      "test-project",
 	}
 
 	entry, err := logical.StorageEntryJSON("project/test-project", project)

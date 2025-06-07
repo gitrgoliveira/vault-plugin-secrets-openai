@@ -85,16 +85,6 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 	apiKeysPattern := regexp.MustCompile(`/v1/organization/api_keys(?:/([^/]+))?`)
 	adminAPIKeysPattern := regexp.MustCompile(`/v1/organization/admin_api_keys(?:/([^/]+))?`)
 
-	// Project direct operations
-	projectPattern := regexp.MustCompile(`/v1/organization/projects/([^/]+)/?$`)
-
-	// Handle direct project operations
-	if matches := projectPattern.FindStringSubmatch(r.URL.Path); matches != nil && r.Method == http.MethodGet {
-		projectID := matches[1]
-		m.getProject(w, r, projectID)
-		return
-	}
-
 	if matches := serviceAccountsPattern.FindStringSubmatch(r.URL.Path); matches != nil {
 		projectID := matches[1]
 		serviceAccountID := ""
@@ -551,25 +541,6 @@ func (m *MockOpenAIServer) revokeAdminAPIKey(w http.ResponseWriter, r *http.Requ
 	// In real implementation, we would check if key exists and delete it
 	// For mock, we'll just return success
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// getProject handles project retrieval by ID
-func (m *MockOpenAIServer) getProject(w http.ResponseWriter, r *http.Request, projectID string) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	// For testing purposes, we'll just assume any project ID is valid
-	// and return a simple project response
-	project := map[string]interface{}{
-		"id":          projectID,
-		"name":        "Test Project",
-		"description": "A test project",
-		"created_at":  time.Now().Format(time.RFC3339),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(project)
 }
 
 // Helper function to generate a random ID string

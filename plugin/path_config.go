@@ -34,9 +34,8 @@ type openaiConfig struct {
 // projectEntry represents a stored project configuration
 // This is still required for dynamic role/project validation and cleanup.
 type projectEntry struct {
-	Name        string `json:"name"`
-	ProjectID   string `json:"project_id"`
-	Description string `json:"description,omitempty"`
+	Name      string `json:"name"`
+	ProjectID string `json:"project_id"`
 }
 
 // pathAdminConfig returns the path configuration for admin-level LDAP config endpoints
@@ -272,13 +271,13 @@ func getConfig(ctx context.Context, s logical.Storage) (*openaiConfig, error) {
 	return config, nil
 }
 
-// getProject returns a project configuration by name
+// getProject returns a project configuration by name (inlined, only used here)
 func (b *backend) getProject(ctx context.Context, s logical.Storage, name string) (*projectEntry, error) {
 	if name == "" {
 		return nil, fmt.Errorf("project name is required")
 	}
 
-	entry, err := s.Get(ctx, projectStoragePath(name))
+	entry, err := s.Get(ctx, fmt.Sprintf("project/%s", name))
 	if err != nil {
 		return nil, err
 	}
@@ -293,11 +292,6 @@ func (b *backend) getProject(ctx context.Context, s logical.Storage, name string
 	}
 
 	return &project, nil
-}
-
-// projectStoragePath returns the storage path for a project
-func projectStoragePath(name string) string {
-	return fmt.Sprintf("project/%s", name)
 }
 
 const confHelpSyn = `

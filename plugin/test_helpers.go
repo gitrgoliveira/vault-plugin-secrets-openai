@@ -98,9 +98,8 @@ func getTestStorage(t *testing.T) logical.Storage {
 // insertTestProject creates a test project entry in storage.
 func insertTestProject(ctx context.Context, t *testing.T, storage logical.Storage, name string) {
 	project := &projectEntry{
-		ProjectID:   name + "_id",
-		Name:        name,
-		Description: "Test project for " + name,
+		ProjectID: name + "_id",
+		Name:      name,
 	}
 
 	entry, err := logical.StorageEntryJSON("project/"+name, project)
