@@ -9,6 +9,8 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/docker-publish.yml'
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
@@ -21,6 +23,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: true
+          
+      - name: Build release binary
+        run: make build-release
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -40,6 +51,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
