@@ -5,10 +5,10 @@ package openaisecrets
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
-	"fmt"
 )
 
 // existenceCheckForNamedPath returns a function that checks if an object with a given name exists in storage
