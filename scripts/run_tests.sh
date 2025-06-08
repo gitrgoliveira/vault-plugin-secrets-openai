@@ -26,7 +26,6 @@ if [ "$1" == "--integration" ]; then
     if [ -z "$OPENAI_TEST_PROJECT_ID" ]; then
         read -p "Enter your OpenAI Test Project ID: " OPENAI_TEST_PROJECT_ID
     fi
-
     # Check if required environment variables are set
     if [ -z "$OPENAI_ADMIN_API_KEY" ] || [ -z "$OPENAI_ORG_ID" ] || [ -z "$OPENAI_TEST_PROJECT_ID" ]; then
         echo "❌ ERROR: OPENAI_ADMIN_API_KEY, OPENAI_ORG_ID, and OPENAI_TEST_PROJECT_ID are required for integration tests."
@@ -48,8 +47,8 @@ if [ "$1" == "--integration" ]; then
         sleep 1
     done
     if ! vault status > /dev/null 2>&1; then
-        echo "❌ ERROR: Vault server failed to start. See vault-dev.log for details."
-        cat vault-dev.log
+        echo "❌ ERROR: Vault server failed to start. See vault.log for details."
+        cat vault.log
         exit 1
     fi
     # Check plugin binary exists
@@ -72,15 +71,13 @@ if [ "$1" == "--integration" ]; then
       exit 1
     fi
     # Configure the plugin with both admin_api_key and admin_api_key_id
-    vault write openai/config admin_api_key="$OPENAI_ADMIN_API_KEY" admin_api_key_id="$ADMIN_API_KEY_ID" organization_id="$OPENAI_ORG_ID"
+    vault write openai/config admin_api_key="$OPENAI_ADMIN_API_KEY" admin_api_key_id="$ADMIN_API_KEY_ID" organization_id="$OPENAI_ORG_ID" rotation_period=5
     # Rotate the OpenAI admin API key (simulate rotation)
+    vault read openai/config
     echo "Rotating OpenAI admin API key..."
     vault write -force openai/config/rotate
-    vault write -force openai/config/rotate
-    # Register a test project
-    vault write openai/project/test-project project_id="$OPENAI_TEST_PROJECT_ID"
     # Create a test role
-    vault write openai/roles/test-role project="test-project" \
+    vault write openai/roles/test-role project_id="$OPENAI_TEST_PROJECT_ID" \
         service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
         ttl=5s max_ttl=24h
     # Issue dynamic credentials

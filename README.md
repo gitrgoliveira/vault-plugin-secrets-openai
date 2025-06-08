@@ -43,7 +43,7 @@ vault write openai/config \
 
 ```shell
 vault write openai/roles/my-role \
-  project="my-project" \
+  project_id="proj_my-project" \
   service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
   ttl=1h \
   max_ttl=24h
@@ -114,7 +114,7 @@ vault write openai/config \
 
 ```shell
 vault write openai/roles/my-role \
-  project="my-project" \
+  project_id="proj_my-project" \
   service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
   ttl=1h \
   max_ttl=24h
@@ -133,7 +133,7 @@ Dynamic credentials are ideal for ephemeral workloads or applications that need 
 ```shell
 # 1. Create a role defining parameters for dynamic credentials
 vault write openai/roles/app-role \
-  project="my-project" \
+  project_id="proj_my-project" \
   ttl=1h \
   max_ttl=24h
 
@@ -188,17 +188,20 @@ Example Read:
 vault read openai/config
 ```
 
-Output:
+Sample output:
 ```
-Key                        Value
----                        -----
-api_endpoint               https://api.openai.com/v1
-rotation_period            604800
-last_rotated               2025-06-01T12:00:00Z
-organization_id            org-123456
+Key                           Value
+---                           -----
+admin_api_key_id              admin-key-id-...
+api_endpoint                  https://api.openai.com/v1
+disable_automated_rotation    false
+organization_id               org-123456
+rotation_period               604800s
+rotation_schedule             n/a
+rotation_window               0
 ```
 
-Note: The admin API key is not returned in the read response for security reasons.
+Note: The admin API key is never returned in the read response for security reasons.
 
 #### Rotate Admin API Key
 
@@ -213,7 +216,10 @@ vault write -f openai/config/rotate
 
 Response:
 ```
-Success! Admin API key has been rotated.
+Key             Value
+---             -----
+rotated_time    2025-06-07T23:43:25+01:00
+success         true
 ```
 
 > **Note:** Only admin API key rotation is supported. The plugin manages the admin key lifecycle robustly; ensure you update both the key and key ID in the configuration when rotating.
@@ -229,7 +235,7 @@ GET /openai/creds/:role_name
 ```
 
 Parameters:
-- `project` - (Required) Project to use for this role
+- `project_id` - (Required) Project ID to use for this role
 - `service_account_name_template` - (Optional) Template for service account name creation
 - `ttl` - (Optional) Default TTL for generated API keys
 - `max_ttl` - (Optional) Maximum TTL for generated API keys
@@ -237,7 +243,7 @@ Parameters:
 Example:
 ```shell
 vault write openai/roles/analytics \
-  project="my-project" \
+  project_id="my-project" \
   service_account_name_template="analytics-{{.RoleName}}-{{.RandomSuffix}}" \
   ttl=2h \
   max_ttl=24h

@@ -271,27 +271,66 @@ func getConfig(ctx context.Context, s logical.Storage) (*openaiConfig, error) {
 	return config, nil
 }
 
-// getProject returns a project configuration by name (inlined, only used here)
-func (b *backend) getProject(ctx context.Context, s logical.Storage, name string) (*projectEntry, error) {
-	if name == "" {
-		return nil, fmt.Errorf("project name is required")
+// getProject returns a project configuration by project ID, validating with OpenAI API if not cached
+func (b *backend) getProject(ctx context.Context, s logical.Storage, projectID string) (*projectEntry, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project ID is required")
 	}
 
-	entry, err := s.Get(ctx, fmt.Sprintf("project/%s", name))
+	// Try to get from storage cache first
+	entry, err := s.Get(ctx, fmt.Sprintf("project/%s", projectID))
 	if err != nil {
 		return nil, err
 	}
-
-	if entry == nil {
-		return nil, nil
+	if entry != nil {
+		var project projectEntry
+		if err := entry.DecodeJSON(&project); err != nil {
+			return nil, fmt.Errorf("error decoding project configuration: %w", err)
+		}
+		return &project, nil
 	}
 
-	var project projectEntry
-	if err := entry.DecodeJSON(&project); err != nil {
-		return nil, fmt.Errorf("error decoding project configuration: %w", err)
+	// Not cached: validate with OpenAI API
+	if b.client == nil {
+		config, err := getConfig(ctx, s)
+		if err != nil {
+			return nil, fmt.Errorf("error getting OpenAI configuration: %w", err)
+		}
+		if config == nil {
+			return nil, fmt.Errorf("OpenAI is not configured")
+		}
+		b.client = NewClient(config.AdminAPIKey, b.Logger())
+		clientConfig := &Config{
+			AdminAPIKey:    config.AdminAPIKey,
+			AdminAPIKeyID:  config.AdminAPIKeyID,
+			APIEndpoint:    config.APIEndpoint,
+			OrganizationID: config.OrganizationID,
+		}
+		if err := b.client.SetConfig(clientConfig); err != nil {
+			return nil, fmt.Errorf("error configuring OpenAI client: %w", err)
+		}
 	}
 
-	return &project, nil
+	// Use the client to fetch project details
+	projectInfo, err := b.client.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("OpenAI project validation failed: %w", err)
+	}
+	if projectInfo.Status != "active" {
+		return nil, fmt.Errorf("OpenAI project %s is not active (status: %s)", projectID, projectInfo.Status)
+	}
+
+	// Cache the project info in Vault storage
+	project := &projectEntry{
+		Name:      projectInfo.Name,
+		ProjectID: projectInfo.ID,
+	}
+	cacheEntry, err := logical.StorageEntryJSON(fmt.Sprintf("project/%s", projectID), project)
+	if err == nil {
+		_ = s.Put(ctx, cacheEntry) // ignore cache errors
+	}
+
+	return project, nil
 }
 
 const confHelpSyn = `

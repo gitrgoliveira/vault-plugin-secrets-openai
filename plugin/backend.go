@@ -26,6 +26,7 @@ type ClientAPI interface {
 	ListServiceAccounts(ctx context.Context, projectID string) ([]*ServiceAccount, error)
 	GetServiceAccount(ctx context.Context, serviceAccountID, projectID string) (*ServiceAccount, error)
 	ValidateProject(ctx context.Context, projectID string) error
+	GetProject(ctx context.Context, projectID string) (*ProjectInfo, error)
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {

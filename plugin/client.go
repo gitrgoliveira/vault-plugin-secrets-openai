@@ -590,3 +590,28 @@ func (c *Client) GetAdminAPIKey(ctx context.Context, keyID string) (map[string]i
 	}
 	return result, nil
 }
+
+// ProjectInfo represents the OpenAI project details response
+// Used for project validation and caching
+type ProjectInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+// GetProject fetches project details from OpenAI API by project ID
+func (c *Client) GetProject(ctx context.Context, projectID string) (*ProjectInfo, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project ID is required")
+	}
+	path := fmt.Sprintf(projectsEndpoint+"/%s", projectID)
+	respBody, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var info ProjectInfo
+	if err := json.Unmarshal(respBody, &info); err != nil {
+		return nil, fmt.Errorf("error parsing OpenAI project response: %w", err)
+	}
+	return &info, nil
+}

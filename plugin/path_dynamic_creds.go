@@ -26,9 +26,9 @@ func (b *backend) pathDynamicSvcAccount() []*framework.Path {
 					Description: "Name of the role",
 					Required:    true,
 				},
-				"project": {
+				"project_id": {
 					Type:        framework.TypeString,
-					Description: "Name of the project to use for this role",
+					Description: "OpenAI Project ID to use for this role (e.g., proj_abc123)",
 					Required:    true,
 				},
 				"service_account_name_template": {
@@ -121,7 +121,7 @@ func (b *backend) pathDynamicCredsCreate() []*framework.Path {
 
 // dynamicRoleEntry represents a dynamic role
 type dynamicRoleEntry struct {
-	Project                    string        `json:"project"`
+	ProjectID                  string        `json:"project_id"`
 	ServiceAccountNameTemplate string        `json:"service_account_name_template"`
 	ServiceAccountDescription  string        `json:"service_account_description"`
 	TTL                        time.Duration `json:"ttl"`
@@ -146,7 +146,7 @@ func (b *backend) pathRoleRead(ctx context.Context, req *logical.Request, data *
 	// Return role information
 	return &logical.Response{
 		Data: map[string]interface{}{
-			"project":                       role.Project,
+			"project_id":                    role.ProjectID,
 			"service_account_name_template": role.ServiceAccountNameTemplate,
 			"service_account_description":   role.ServiceAccountDescription,
 			"ttl":                           int64(role.TTL.Seconds()),
@@ -172,21 +172,21 @@ func (b *backend) pathRoleWrite(ctx context.Context, req *logical.Request, data 
 	}
 
 	// Update role from request data
-	projectName := data.Get("project").(string)
-	if projectName == "" {
-		return logical.ErrorResponse("project is required"), nil
+	projectID := data.Get("project_id").(string)
+	if projectID == "" {
+		return logical.ErrorResponse("project_id is required"), nil
 	}
 
 	// Verify the project exists
-	project, err := b.getProject(ctx, req.Storage, projectName)
+	project, err := b.getProject(ctx, req.Storage, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("error checking project: %w", err)
 	}
 	if project == nil {
-		return logical.ErrorResponse("project %q does not exist", projectName), nil
+		return logical.ErrorResponse("project_id %q does not exist", projectID), nil
 	}
 
-	role.Project = projectName
+	role.ProjectID = projectID
 
 	if serviceAccountNameTemplate, ok := data.GetOk("service_account_name_template"); ok {
 		role.ServiceAccountNameTemplate = serviceAccountNameTemplate.(string)
@@ -298,12 +298,12 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	}
 
 	// Get project
-	project, err := b.getProject(ctx, req.Storage, role.Project)
+	project, err := b.getProject(ctx, req.Storage, role.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving project: %w", err)
 	}
 	if project == nil {
-		return logical.ErrorResponse("project %q does not exist", role.Project), nil
+		return logical.ErrorResponse("project_id %q does not exist", role.ProjectID), nil
 	}
 
 	// Initialize the client if it hasn't been

@@ -12,6 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Project represents the OpenAI project details response used in tests.
+type Project struct {
+	ID     string
+	Name   string
+	Status string
+}
+
 // Advanced mockClient for flexible test mocking
 // (replaces the simple mockClient above)
 type mockClient struct {
@@ -64,6 +71,15 @@ func (m *mockClient) GetServiceAccount(ctx context.Context, serviceAccountID, pr
 	}
 	return &ServiceAccount{ID: serviceAccountID, ProjectID: projectID}, nil
 }
+
+// Ensure mockClient implements GetProject to satisfy ClientAPI interface for all test cases.
+func (m *mockClient) GetProject(ctx context.Context, projectID string) (*ProjectInfo, error) {
+	// Return a dummy project or error as needed for tests
+	return &ProjectInfo{ID: projectID, Name: "mock-project", Status: "active"}, nil
+}
+
+// Removed unused field getProjectFn to resolve staticcheck error and improve code quality.
+
 func (m *mockClient) ValidateProject(ctx context.Context, projectID string) error {
 	// For tests, assume all project IDs are valid unless overridden
 	if m != nil && m.listServiceAccountsFn != nil {
@@ -110,7 +126,7 @@ func insertTestProject(ctx context.Context, t *testing.T, storage logical.Storag
 // insertTestRole creates a test dynamic role entry in storage.
 func insertTestRole(ctx context.Context, t *testing.T, storage logical.Storage, name string, projectName string) {
 	role := &dynamicRoleEntry{
-		Project:                    projectName,
+		ProjectID:                  projectName,
 		ServiceAccountNameTemplate: "vault-{{.RoleName}}-{{.RandomSuffix}}",
 		ServiceAccountDescription:  "Test service account for " + name,
 		TTL:                        defaultTTL,
