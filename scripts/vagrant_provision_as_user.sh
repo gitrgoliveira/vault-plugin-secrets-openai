@@ -4,6 +4,44 @@ set -e
 
 cd $HOME/vault-plugin-secrets-openai
 
+# Install Docker rootless mode for vagrant user
+mkdir -p /home/vagrant/.config/docker/
+systemctl --user start dbus
+
+export PATH=/usr/bin:$PATH
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+dockerd-rootless-setuptool.sh install
+docker context use rootless
+
+echo 'export PATH=/usr/bin:$PATH' >> ~/.bashrc
+echo 'export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock' >> ~/.bashrc
+
+mkdir -p /home/vagrant/.config/docker/
+cat <<EOF | sudo tee /home/vagrant/.config/docker/daemon.json
+{
+  "runtimes": {
+    "runsc": {
+      "path": "/usr/local/bin/runsc",
+      "runtimeArgs": [
+        "--host-uds=all"
+      ]
+    }
+  }
+}
+EOF
+
+systemctl --user restart docker
+
+
+# Print Docker info for verification
+sudo -u vagrant -i bash -c 'docker info || true'
+
+# Setup environment variables for the vagrant user
+cat <<EOF >> /home/vagrant/.bashrc
+export VAULT_ADDR=http://127.0.0.1:8200
+export VAULT_TOKEN=root
+EOF
+
 source /home/vagrant/.bashrc
 
 echo "Starting Vault server..."
