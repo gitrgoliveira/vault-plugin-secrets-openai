@@ -41,15 +41,13 @@ sudo apt-get install -y uidmap dbus-user-session
 
 # Install gVisor/runsc for containerized plugins if not already installed
 if ! command -v runsc >/dev/null 2>&1; then
-  (
-    set -e
-    URL=https://storage.googleapis.com/gvisor/releases/release/latest
-    wget ${URL}/runsc ${URL}/runsc.sha512 ${URL}/containerd-shim-runsc-v1 ${URL}/containerd-shim-runsc-v1.sha512
-    sha512sum -c runsc.sha512 -c containerd-shim-runsc-v1.sha512
-    rm -f *.sha512
-    chmod a+rx runsc containerd-shim-runsc-v1
-    sudo mv runsc containerd-shim-runsc-v1 /usr/local/bin
-  )
+  # Add the gVisor repository key (fix for gpg --no-tty and curl temp file)
+  curl -fsSL https://gvisor.dev/archive.key -o /tmp/gvisor-archive.key
+  sudo gpg --batch --yes --no-tty --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg /tmp/gvisor-archive.key
+  # Add the gVisor APT repository
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list
+  sudo apt-get update
+  sudo apt-get install -y runsc
 fi
 
 

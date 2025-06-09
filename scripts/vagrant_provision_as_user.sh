@@ -17,13 +17,16 @@ echo 'export PATH=/usr/bin:$PATH' >> ~/.bashrc
 echo 'export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock' >> ~/.bashrc
 
 mkdir -p /home/vagrant/.config/docker/
-cat <<EOF | sudo tee /home/vagrant/.config/docker/daemon.json
+
+# Use the system-wide runsc binary for rootless Docker
+cat <<EOF > /home/vagrant/.config/docker/daemon.json
 {
   "runtimes": {
     "runsc": {
-      "path": "/usr/local/bin/runsc",
+      "path": "/usr/bin/runsc",
       "runtimeArgs": [
-        "--host-uds=all"
+        "--host-uds=all",
+        "--network=host"
       ]
     }
   }
@@ -31,10 +34,35 @@ cat <<EOF | sudo tee /home/vagrant/.config/docker/daemon.json
 EOF
 
 systemctl --user restart docker
+sleep 3
+
+# Test runsc runtime with hello-world, fallback to /usr/local/bin/runsc if needed
+echo "Testing runsc runtime with hello-world..."
+docker pull hello-world
+if ! docker run --rm --runtime=runsc hello-world; then
+  echo "runsc not found at /usr/bin/runsc, trying /usr/local/bin/runsc..."
+  cat <<EOF > /home/vagrant/.config/docker/daemon.json
+{
+  "runtimes": {
+    "runsc": {
+      "path": "/usr/local/bin/runsc",
+      "runtimeArgs": [
+        "--host-uds=all",
+        "--ignore-cgroups",
+        "--network=host"
+      ]
+    }
+  }
+}
+EOF
+  systemctl --user restart docker
+  sleep 3
+  docker run --rm --runtime=runsc hello-world || echo "runsc runtime test failed. Please check installation."
+fi
 
 
 # Print Docker info for verification
-sudo -u vagrant -i bash -c 'docker info || true'
+docker info || true
 
 # Setup environment variables for the vagrant user
 cat <<EOF >> /home/vagrant/.bashrc
