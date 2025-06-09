@@ -17,8 +17,8 @@ apt-get install -y make \
 
 apt-get install -y vault docker-ce docker-ce-cli containerd.io golang-go 
 
-# Upgrade Go to 1.24.3 if not already installed
-GO_VERSION="1.24.3"
+# Upgrade Go to 1.24.4 if not already installed
+GO_VERSION="1.24.4"
 if ! go version 2>/dev/null | grep -q "go$GO_VERSION"; then
   echo "Upgrading Go to $GO_VERSION..."
   wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
@@ -30,6 +30,11 @@ if ! go version 2>/dev/null | grep -q "go$GO_VERSION"; then
 fi
 source /home/vagrant/.bashrc
 go version
+
+# Install staticcheck for Go code analysis
+echo "Installing staticcheck..."
+go install honnef.co/go/tools/cmd/staticcheck@latest
+echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> /home/vagrant/.bashrc
 
 # Install rootless Docker dependencies
 sudo apt-get install -y uidmap dbus-user-session
