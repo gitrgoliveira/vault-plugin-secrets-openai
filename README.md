@@ -287,5 +287,76 @@ vault write openai/config \
 
 ---
 
+## Vagrant Development Environment (Recommended for Linux Container Plugin Testing)
+
+This project provides a robust Vagrant-based development environment for building, testing, and running the Vault OpenAI Secrets Plugin with support for rootless Docker and gVisor/runsc.
+
+### Features
+- Automated provisioning of Go, Docker (rootless), and gVisor/runsc for containerized plugin testing.
+- Rootless Docker setup for the `vagrant` user, with correct socket and runtime configuration.
+- gVisor/runsc installed from the official APT repository, with fallback to `runc` if runsc is not compatible with rootless mode.
+- Automated plugin build, Docker image creation, and Vault plugin registration inside the VM.
+- Integration and unit test scripts for plugin validation.
+
+### Prerequisites
+- [Vagrant](https://www.vagrantup.com/)
+- [VirtualBox](https://www.virtualbox.org/) or another supported provider
+
+### Quick Start (Vagrant)
+
+1. **Start the Vagrant VM and provision:**
+   ```sh
+   vagrant up
+   ```
+   This will:
+   - Install Go, Docker (rootless), and gVisor/runsc
+   - Set up Docker for the `vagrant` user in rootless mode
+   - Build the plugin and Docker image
+   - Start Vault in dev mode and register the plugin
+
+2. **SSH into the VM:**
+   ```sh
+   vagrant ssh
+   cd vault-plugin-secrets-openai
+   ```
+
+3. **Run tests:**
+   - **Unit tests:**
+     ```sh
+     ./scripts/run_tests.sh
+     ```
+   - **Integration tests:**
+     ```sh
+     ./scripts/run_tests.sh --integration
+     ```
+     You will be prompted for your OpenAI Admin API Key, Organization ID, and Test Project ID.
+
+#### Notes on Docker and gVisor/runsc
+- The provisioning scripts attempt to use `runsc` as the Docker runtime for containerized plugin testing.
+- **gVisor/runsc is not fully compatible with rootless Docker** due to systemd/cgroup limitations. If runsc fails, the scripts will automatically fall back to the default `runc` runtime for plugin build and Vault registration.
+- The correct Docker socket (`/run/user/1000/docker.sock`) is set via the `DOCKER_HOST` environment variable for all Vault and Docker operations.
+
+#### Environment Variables
+- `VAULT_ADDR`, `VAULT_TOKEN`, and `DOCKER_HOST` are set automatically in the VM for the `vagrant` user.
+- For integration tests, you will need to provide:
+  - `OPENAI_ADMIN_API_KEY`
+  - `OPENAI_ORG_ID`
+  - `OPENAI_TEST_PROJECT_ID`
+
+#### Troubleshooting
+- If you see errors about Docker socket permissions or plugin registration, ensure that `DOCKER_HOST` is set to the rootless Docker socket and that Vault is running with this environment variable.
+- If you need to reprovision from scratch:
+  ```sh
+  vagrant destroy -f
+  vagrant up
+  ```
+
+#### File Overview
+- `scripts/vagrant_provision_as_root.sh`: Installs system dependencies (Go, Docker, gVisor, etc.)
+- `scripts/vagrant_provision_as_user.sh`: Configures Docker rootless mode, builds the plugin, starts Vault, and registers the plugin.
+- `scripts/run_tests.sh`: Runs unit and integration tests for the plugin.
+
+---
+
 ## License
 This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE](LICENSE) file for details.
