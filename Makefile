@@ -11,7 +11,7 @@ ifeq ($(GOOS), darwin)
 	HASH_CMD = shasum -a 256
 endif
 
-.PHONY: all build clean test test-integration fmt vet check-fmt lint staticcheck
+.PHONY: all build build-verbose build-progress build-progress-force build-release build-release-verbose clean test test-integration fmt vet check-fmt lint staticcheck
 
 all: check-fmt test lint staticcheck-ci build
 
@@ -20,10 +20,28 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
 
+build-verbose:
+	@echo "Building $(PLUGIN_NAME) with verbose output..."
+	@mkdir -p $(BUILD_DIR)
+	go build -v -x -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
+
 build-release:
 	@echo "Building release version of $(PLUGIN_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	GOOS=linux CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
+
+build-release-verbose:
+	@echo "Building release version of $(PLUGIN_NAME) with verbose output..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux CGO_ENABLED=0 go build -v -x -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
+	
+build-progress:
+	@echo "Building $(PLUGIN_NAME) with progress indicator..."
+	./scripts/build_with_progress.sh
+
+build-progress-force:
+	@echo "Building $(PLUGIN_NAME) with progress indicator (forced rebuild)..."
+	./scripts/build_with_progress.sh --force
 
 clean:
 	@echo "Cleaning up..."
