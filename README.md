@@ -2,6 +2,8 @@
 
 A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accounts and API keys using the OpenAI Admin API. This plugin enables you to create, rotate, and revoke OpenAI project service accounts and API keys on demand, with full automation and security best practices.
 
+This plugin was developed and tested with Vault 1.9.4.
+
 ---
 
 ## Table of Contents
@@ -195,8 +197,8 @@ This plugin emits Prometheus-compatible metrics via Vault's telemetry system for
 
 ## Development
 - Go 1.24+
-- Vault 1.10+ for containerized plugin support
-- Docker (for containerized plugin usage)
+- Vault 1.19+ for containerized plugin support
+- Vagrant (for containerized plugin usage)
 
 ---
 
