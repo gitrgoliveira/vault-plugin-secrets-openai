@@ -15,6 +15,7 @@ A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accoun
 - [Development](#development)
 - [Usage with Docker](#usage-with-docker)
 - [Usage without Docker](#usage-without-docker)
+- [Vagrant Development Environment](#vagrant-development-environment)
 - [License](#license)
 
 ---
@@ -32,21 +33,29 @@ A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accoun
 
 ## Quick Start
 
-### 1. Build the Plugin
+### 1. Download the Plugin
+You can download the pre-built plugin binary from the [v0.0.2 release page](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/tag/v0.0.2).
+
+### 2. Extract the Plugin
 ```shell
-make build
+# Extract the plugin binary
+mkdir -p ./bin
+curl -L -o ./bin/vault-plugin-secrets-openai https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/download/v0.0.2/vault-plugin-secrets-openai
+chmod +x ./bin/vault-plugin-secrets-openai
 ```
 
-### 2. Start a Dev Vault Server and Register the Plugin
+### 3. Start a Dev Vault Server and Register the Plugin
 ```shell
 vault server -dev -dev-plugin-dir=./bin
 # In another terminal
 export VAULT_ADDR=http://127.0.0.1:8200
-make register
-make enable
+export VAULT_TOKEN=root
+vault plugin register -sha256=$(shasum -a 256 ./bin/vault-plugin-secrets-openai | cut -d' ' -f1) \
+  secret vault-plugin-secrets-openai
+vault secrets enable -path=openai vault-plugin-secrets-openai
 ```
 
-### 3. Configure the Plugin
+### 4. Configure the Plugin
 ```shell
 vault write openai/config \
   admin_api_key="sk-admin-..." \
@@ -54,7 +63,7 @@ vault write openai/config \
   organization_id="org-123456"
 ```
 
-### 4. Create a Role
+### 5. Create a Role
 ```shell
 vault write openai/roles/my-role \
   project_id="proj_my-project" \
@@ -63,31 +72,9 @@ vault write openai/roles/my-role \
   max_ttl=24h
 ```
 
-### 5. Generate an API Key
+### 6. Generate an API Key
 ```shell
 vault read openai/creds/my-role
-```
-
----
-
-## Usage
-
-- **Dynamic Credentials**: Create service accounts (with API keys) on-demand with automatic cleanup.
-
-### Dynamic Credentials Workflow
-```shell
-# 1. Create a role
-dynamic_role_name="app-role"
-vault write openai/roles/$dynamic_role_name \
-  project_id="proj_my-project" \
-  ttl=1h \
-  max_ttl=24h
-
-# 2. Generate a service account and API key
-vault read openai/creds/$dynamic_role_name
-
-# 3. Optional: Request a custom TTL
-vault read openai/creds/$dynamic_role_name ttl=30m
 ```
 
 Sample response:
@@ -221,39 +208,85 @@ You can run the Vault OpenAI Secrets Plugin in a containerized environment using
 
 ### 1. Build the Plugin Binary
 ```shell
-make build
+make build-release
 ```
 
 ### 2. Build the Docker Image
 A sample Dockerfile is provided. Build the image:
 ```shell
-docker build -t vault-openai-plugin .
+make release VERSION=0.0.2
 ```
 
-### 3. Run Vault with the Plugin
+### 3. Run Vault in dev mode if not already running
 ```shell
-docker run --rm -p 8200:8200 \
-  -e VAULT_DEV_ROOT_TOKEN_ID=root \
-  -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
-  -v $(pwd)/bin:/vault/plugins \
-  vault server -dev -dev-plugin-dir=/vault/plugins
+export VAULT_ADDR=http://127.0.0.1:8200
+export VAULT_TOKEN=root
+export DOCKER_HOST=unix:///run/user/1000/docker.sock # Adjust if using a different Docker socket
+nohup env DOCKER_HOST=$DOCKER_HOST vault server -dev -dev-root-token-id=root > vault.log 2>&1 &
+
 ```
 
 ### 4. Register and Enable the Plugin
-In another terminal:
-```shell
-export VAULT_ADDR=http://127.0.0.1:8200
-vault plugin register -sha256=$(shasum -a 256 ./bin/vault-plugin-secrets-openai | cut -d' ' -f1) \
+```bash
+# Register the plugin with Vault
+vault plugin register -sha256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:0.0.2 | cut -d: -f2) \
   secret vault-plugin-secrets-openai
-vault secrets enable -path=openai -plugin-name=vault-plugin-secrets-openai plugin
+
+# Enable the secrets engine
+vault secrets enable -path=openai vault-plugin-secrets-openai
 ```
 
 ### 5. Configure the Plugin
+```bash
+# Configure with your OpenAI admin API key
+vault write openai/config admin_api_key="$OPENAI_ADMIN_API_KEY" \
+admin_api_key_id="$ADMIN_API_KEY_ID" \
+organization_id="$OPENAI_ORG_ID" \
+rotation_period="720h"
+
+vault read openai/config
+Key                           Value
+---                           -----
+admin_api_key_id              key_OInm3Qed3kNn4BUQ
+api_endpoint                  https://api.openai.com/v1
+disable_automated_rotation    false
+last_rotated                  2025-06-09T22:58:19+01:00
+organization_id               org-gAZ0NbaPX8FD2YcdLsHiKx8v
+rotation_period               720h
+rotation_schedule             n/a
+rotation_window               0 
+```
+
+The admin API key is used by Vault to create and manage service accounts in your OpenAI organization. The rotation period determines how often this root credential is automatically rotated. See all supported parameters here.
+
+You can also use `vault write -force openai/config/rotate` to force the rotation.
+
+### 6. Create Roles
+Roles define the permissions and TTL for credentials generated for specific applications:
+```bash
+# Create a role for your application
+vault write openai/roles/my-application project_id="$OPENAI_TEST_PROJECT_ID" \
+service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
+      ttl=”1h” max_ttl=”24h”
+```
 ```shell
-vault write openai/config \
-  admin_api_key="sk-admin-..." \
-  admin_api_key_id="admin-key-id-..." \
-  organization_id="org-123456"
+
+### 7. Generate an API Key
+```shell
+vault read openai/creds/my-application
+```
+
+Sample response:
+```
+Key                Value
+---                -----
+lease_id           openai/creds/my-application/abcdef12345
+lease_duration     1h
+lease_renewable    true
+api_key            sk-...
+api_key_id         api_key_abc123
+service_account    vault-my-application-12345
+service_account_id svc_abc123
 ```
 
 ---
