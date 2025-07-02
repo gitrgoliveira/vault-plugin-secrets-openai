@@ -73,7 +73,7 @@ build-verbose: ## Build with verbose output
 build-release: ## Build optimized release binary for Linux
 	@echo "$(COLOR_GREEN)Building release version of $(PLUGIN_NAME)...$(COLOR_RESET)"
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(PLUGIN_NAME)-linux-amd64 ./cmd/$(PLUGIN_NAME)
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(PLUGIN_NAME) ./cmd/$(PLUGIN_NAME)
 	@echo "$(COLOR_GREEN)✓ Built $(BUILD_DIR)/$(PLUGIN_NAME)-linux-amd64$(COLOR_RESET)"
 
 build-release-verbose: ## Build release binary with verbose output
