@@ -177,12 +177,12 @@ func (b *backend) pathRoleWrite(ctx context.Context, req *logical.Request, data 
 		return logical.ErrorResponse("project_id is required"), nil
 	}
 
-	// Verify the project exists
-	project, err := b.getProject(ctx, req.Storage, projectID)
+	// Verify the project exists and is active
+	projectInfo, err := b.validateProject(ctx, req.Storage, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("error checking project: %w", err)
+		return nil, fmt.Errorf("error validating project: %w", err)
 	}
-	if project == nil {
+	if projectInfo == nil {
 		return logical.ErrorResponse("project_id %q does not exist", projectID), nil
 	}
 
@@ -297,12 +297,12 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 		return logical.ErrorResponse("role %q does not exist", roleName), nil
 	}
 
-	// Get project
-	project, err := b.getProject(ctx, req.Storage, role.ProjectID)
+	// Validate project is still active
+	projectInfo, err := b.validateProject(ctx, req.Storage, role.ProjectID)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving project: %w", err)
+		return nil, fmt.Errorf("error validating project: %w", err)
 	}
-	if project == nil {
+	if projectInfo == nil {
 		return logical.ErrorResponse("project_id %q does not exist", role.ProjectID), nil
 	}
 
@@ -329,7 +329,7 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	nameData := map[string]interface{}{
 		"RoleName":     roleName,
 		"RandomSuffix": randSuffix,
-		"ProjectName":  project.Name,
+		"ProjectName":  projectInfo.Name,
 	}
 	svcAccountName, err := formatName(role.ServiceAccountNameTemplate, nameData)
 	if err != nil {
@@ -358,8 +358,8 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	expiresAt := time.Now().Add(ttl)
 
 	// Create service account (which automatically creates an API key in OpenAI API)
-	b.Logger().Debug("Creating service account with API key", "name", svcAccountName, "project", project.ProjectID)
-	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, project.ProjectID, CreateServiceAccountRequest{
+	b.Logger().Debug("Creating service account with API key", "name", svcAccountName, "project", projectInfo.ID)
+	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, projectInfo.ID, CreateServiceAccountRequest{
 		Name: svcAccountName,
 	})
 	if err != nil {
@@ -388,7 +388,7 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	}, map[string]interface{}{
 		"api_key_id":         apiKey.ID,
 		"service_account_id": svcAccount.ID,
-		"project_id":         project.ProjectID,
+		"project_id":         projectInfo.ID,
 	})
 
 	// Set lease

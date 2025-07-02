@@ -31,13 +31,6 @@ type openaiConfig struct {
 	automatedrotationutil.AutomatedRotationParams
 }
 
-// projectEntry represents a stored project configuration
-// This is still required for dynamic role/project validation and cleanup.
-type projectEntry struct {
-	Name      string `json:"name"`
-	ProjectID string `json:"project_id"`
-}
-
 // pathAdminConfig returns the path configuration for admin-level LDAP config endpoints
 func (b *backend) pathAdminConfig() []*framework.Path {
 	return []*framework.Path{
@@ -271,26 +264,14 @@ func getConfig(ctx context.Context, s logical.Storage) (*openaiConfig, error) {
 	return config, nil
 }
 
-// getProject returns a project configuration by project ID, validating with OpenAI API if not cached
-func (b *backend) getProject(ctx context.Context, s logical.Storage, projectID string) (*projectEntry, error) {
+// validateProject validates a project ID with OpenAI API without caching
+// This simplifies the codebase by removing project storage and caching logic
+func (b *backend) validateProject(ctx context.Context, s logical.Storage, projectID string) (*ProjectInfo, error) {
 	if projectID == "" {
 		return nil, fmt.Errorf("project ID is required")
 	}
 
-	// Try to get from storage cache first
-	entry, err := s.Get(ctx, fmt.Sprintf("project/%s", projectID))
-	if err != nil {
-		return nil, err
-	}
-	if entry != nil {
-		var project projectEntry
-		if err := entry.DecodeJSON(&project); err != nil {
-			return nil, fmt.Errorf("error decoding project configuration: %w", err)
-		}
-		return &project, nil
-	}
-
-	// Not cached: validate with OpenAI API
+	// Ensure client is configured
 	if b.client == nil {
 		config, err := getConfig(ctx, s)
 		if err != nil {
@@ -311,7 +292,7 @@ func (b *backend) getProject(ctx context.Context, s logical.Storage, projectID s
 		}
 	}
 
-	// Use the client to fetch project details
+	// Validate project with OpenAI API
 	projectInfo, err := b.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI project validation failed: %w", err)
@@ -320,17 +301,7 @@ func (b *backend) getProject(ctx context.Context, s logical.Storage, projectID s
 		return nil, fmt.Errorf("OpenAI project %s is not active (status: %s)", projectID, projectInfo.Status)
 	}
 
-	// Cache the project info in Vault storage
-	project := &projectEntry{
-		Name:      projectInfo.Name,
-		ProjectID: projectInfo.ID,
-	}
-	cacheEntry, err := logical.StorageEntryJSON(fmt.Sprintf("project/%s", projectID), project)
-	if err == nil {
-		_ = s.Put(ctx, cacheEntry) // ignore cache errors
-	}
-
-	return project, nil
+	return projectInfo, nil
 }
 
 const confHelpSyn = `

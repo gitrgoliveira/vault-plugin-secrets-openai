@@ -78,8 +78,6 @@ func (m *mockClient) GetProject(ctx context.Context, projectID string) (*Project
 	return &ProjectInfo{ID: projectID, Name: "mock-project", Status: "active"}, nil
 }
 
-// Removed unused field getProjectFn to resolve staticcheck error and improve code quality.
-
 func (m *mockClient) ValidateProject(ctx context.Context, projectID string) error {
 	// For tests, assume all project IDs are valid unless overridden
 	if m != nil && m.listServiceAccountsFn != nil {
@@ -109,18 +107,6 @@ func getTestBackend(t *testing.T) *backend {
 // getTestStorage returns an in-memory storage for testing.
 func getTestStorage(t *testing.T) logical.Storage {
 	return &logical.InmemStorage{}
-}
-
-// insertTestProject creates a test project entry in storage.
-func insertTestProject(ctx context.Context, t *testing.T, storage logical.Storage, name string) {
-	project := &projectEntry{
-		ProjectID: name + "_id",
-		Name:      name,
-	}
-
-	entry, err := logical.StorageEntryJSON("project/"+name, project)
-	require.NoError(t, err)
-	require.NoError(t, storage.Put(ctx, entry))
 }
 
 // insertTestRole creates a test dynamic role entry in storage.

@@ -302,7 +302,7 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 			svc = &ServiceAccount{
 				ID:        asString(serviceAccountData["id"]),
 				Name:      asString(serviceAccountData["name"]),
-				ProjectID: projectID, // Ensure projectID is set
+				ProjectID: projectID,
 				Role:      asString(serviceAccountData["role"]),
 			}
 
@@ -315,7 +315,7 @@ func (c *Client) CreateServiceAccount(ctx context.Context, projectID string, req
 			svc = &ServiceAccount{
 				ID:        asString(raw["id"]),
 				Name:      asString(raw["name"]),
-				ProjectID: projectID, // Ensure projectID is set
+				ProjectID: projectID,
 				Role:      asString(raw["role"]),
 			}
 
@@ -592,7 +592,7 @@ func (c *Client) GetAdminAPIKey(ctx context.Context, keyID string) (map[string]i
 }
 
 // ProjectInfo represents the OpenAI project details response
-// Used for project validation and caching
+// Used for project validation
 type ProjectInfo struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`

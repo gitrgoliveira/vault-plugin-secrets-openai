@@ -94,18 +94,13 @@ func TestDynamicRoleEntry_Validation(t *testing.T) {
 		client: nil, // Not needed for this test
 	}
 
-	// Setup storage for project
+	// Setup storage - no longer need to cache projects
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
-	project := &projectEntry{
-		ProjectID: "proj_123",
-		Name:      "test-project",
-	}
-
-	entry, err := logical.StorageEntryJSON("project/test-project", project)
-	require.NoError(t, err)
-	require.NoError(t, storage.Put(ctx, entry))
+	// Configure mock client to handle project validation
+	mockClient := &mockClient{}
+	b.client = mockClient
 
 	// Test cases
 	tests := []struct {
@@ -194,14 +189,13 @@ func TestDynamicRoleEntry_Validation(t *testing.T) {
 // TestMetricEmissionOnCredentialIssuance verifies that emitCredentialIssuedMetric is called during credential issuance
 func TestMetricEmissionOnCredentialIssuance(t *testing.T) {
 	b := getTestBackend(t)
-	// Setup: create a role and project in storage
+	// Setup: create a role in storage
 	ctx := context.Background()
 	storage := getTestStorage(t)
 	b.storageView = storage
 	roleName := "test-role"
 	projectName := "test-project"
-	// Insert project and role
-	insertTestProject(ctx, t, storage, projectName)
+	// Insert role (projects are now validated inline)
 	insertTestRole(ctx, t, storage, roleName, projectName)
 
 	// Spy: wrap IncrCounterWithLabels
@@ -247,7 +241,7 @@ func TestMetricEmissionOnCredentialRevocation(t *testing.T) {
 	b.storageView = storage
 	roleName := "test-role"
 	projectName := "test-project"
-	insertTestProject(ctx, t, storage, projectName)
+
 	insertTestRole(ctx, t, storage, roleName, projectName)
 
 	// Issue credentials to get a secret
