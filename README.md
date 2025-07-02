@@ -24,7 +24,7 @@ This plugin was developed and tested with Vault 1.19.4.
 
 ## Features
 - **Dynamic Service Accounts**: Create OpenAI service accounts (with API keys) with configurable TTLs for improved security.
-- **Automatic Cleanup**: Service accounts and API keys are automatically cleaned up after use.
+- **Automatic Cleanup**: Service accounts and API keys are automatically cleaned up when leases expire.
 - **Admin API Key Rotation**: Securely rotate OpenAI admin keys manually or on a schedule.
 - **Metrics and Monitoring**: Prometheus-compatible metrics for credential issuance, revocation, and API errors.
 - **Containerized Deployment**: Run as a containerized Vault plugin with Docker (Linux only).

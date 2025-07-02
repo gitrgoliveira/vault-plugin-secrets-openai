@@ -105,11 +105,6 @@ func (b *backend) initialize(ctx context.Context, initRequest *logical.Initializ
 			return err
 		}
 
-		// Initialize and start the cleanup manager if client is configured
-		b.cleanupManager = NewCleanupManager(b)
-		b.cleanupManager.Start()
-		b.Logger().Info("Started cleanup manager for orphaned service accounts")
-
 		// Initialize the rotation queue for admin key rotation
 		b.initRotationQueue(ctx, initRequest.Storage)
 
@@ -140,13 +135,6 @@ func (b *backend) clean(_ context.Context) {
 	// Stop the queue first
 	b.invalidateQueue()
 
-	// Stop the cleanup manager if it exists
-	if b.cleanupManager != nil {
-		b.Logger().Info("Stopping cleanup manager")
-		b.cleanupManager.Stop()
-	}
-
-	// No rotation job to unregister
 }
 
 // invalidateQueue cancels any background queue loading and destroys the queue.
@@ -184,9 +172,8 @@ type backend struct {
 
 	// managedUsers contains the set of OpenAI service accounts managed by the secrets engine
 	// This is used to ensure that service accounts are not duplicated.
-	managedUsers   map[string]struct{}
-	cleanupManager *CleanupManager
-	storageView    logical.Storage
+	managedUsers map[string]struct{}
+	storageView  logical.Storage
 }
 
 // Logger returns the backend's logger
