@@ -216,7 +216,7 @@ make build-release
 ### 2. Build the Docker Image
 A sample Dockerfile is provided. Build the image:
 ```shell
-make release VERSION=0.0.2
+make release VERSION=0.0.3
 ```
 
 ### 3. Run Vault in dev mode if not already running
@@ -231,17 +231,17 @@ nohup env DOCKER_HOST=$DOCKER_HOST vault server -dev -dev-root-token-id=root > v
 ### 4. Register and Enable the Plugin
 ```bash
 # Get the Docker image SHA256
-PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:0.0.2 | cut -d: -f2)
+PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:0.0.3 | cut -d: -f2)
 
 # Register the plugin runtime (if using containerized plugins)
 vault plugin runtime register -type=container -rootless=true -oci_runtime=runsc runsc
 
-# Register the plugin with Vault (replace 0.0.2 with your version)
+# Register the plugin with Vault (replace 0.0.3 with your version)
 vault plugin register \
   -sha256="$PLUGIN_SHA256" \
   -oci_image="vault-plugin-secrets-openai" \
   -runtime="runsc" \
-  -version="0.0.2" \
+  -version="0.0.3" \
   secret vault-plugin-secrets-openai
 
 # Enable the secrets engine
