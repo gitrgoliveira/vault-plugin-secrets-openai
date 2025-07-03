@@ -32,7 +32,7 @@ type openaiConfig struct {
 	automatedrotationutil.AutomatedRotationParams
 }
 
-// pathAdminConfig returns the path configuration for admin-level LDAP config endpoints
+// pathAdminConfig returns the path configuration for admin-level OpenAI config endpoints
 func (b *backend) pathAdminConfig() []*framework.Path {
 	return []*framework.Path{
 		{

@@ -159,5 +159,3 @@ func TestSanitizeServiceAccountName(t *testing.T) {
 		})
 	}
 }
-
-// No longer needed - using the helper function at the top of the file

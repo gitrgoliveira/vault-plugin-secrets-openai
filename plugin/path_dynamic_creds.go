@@ -38,7 +38,7 @@ func (b *backend) pathDynamicSvcAccount() []*framework.Path {
 				},
 				"service_account_description": {
 					Type:        framework.TypeString,
-					Description: "Description for created service accounts",
+					Description: "Description for created service accounts (note: not supported by OpenAI API, kept for configuration record only)",
 					Default:     "Service account created by Vault",
 				},
 				"ttl": {
