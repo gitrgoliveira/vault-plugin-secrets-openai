@@ -2,13 +2,6 @@ name: Build and Publish Docker image to GHCR
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'Dockerfile'
-      - '**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/docker-publish.yml'
     tags:
       - 'v*.*.*'
   workflow_dispatch:
