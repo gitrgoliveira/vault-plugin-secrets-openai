@@ -120,7 +120,7 @@ if [[ ! -z "$OPENAI_ADMIN_API_KEY" ]] && [[ ! -z "$OPENAI_ORG_ID" ]]; then
     organization_id="$OPENAI_ORG_ID"
 
   vault write openai/roles/test-role \
-    project="test-project" \
+    project_id="test-project" \
     service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
     ttl=1h \
     max_ttl=24h

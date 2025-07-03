@@ -36,13 +36,13 @@ This plugin was developed and tested with Vault 1.19.4.
 ## Quick Start
 
 ### 1. Download the Plugin
-You can download the pre-built plugin binary from the [v0.0.2 release page](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/tag/v0.0.2).
+You can download the pre-built plugin binary from the [latest release page](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/latest).
 
 ### 2. Extract the Plugin
 ```shell
-# Extract the plugin binary
+# Extract the plugin binary (replace VERSION with the latest release version)
 mkdir -p ./bin
-curl -L -o ./bin/vault-plugin-secrets-openai https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/download/v0.0.2/vault-plugin-secrets-openai
+curl -L -o ./bin/vault-plugin-secrets-openai https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/download/VERSION/vault-plugin-secrets-openai
 chmod +x ./bin/vault-plugin-secrets-openai
 ```
 
@@ -196,7 +196,7 @@ This plugin emits Prometheus-compatible metrics via Vault's telemetry system for
 ---
 
 ## Development
-- Go 1.24+
+- Go 1.24.4+
 - Vault 1.19+ for containerized plugin support
 - Vagrant (for containerized plugin usage)
 
@@ -230,8 +230,18 @@ nohup env DOCKER_HOST=$DOCKER_HOST vault server -dev -dev-root-token-id=root > v
 
 ### 4. Register and Enable the Plugin
 ```bash
-# Register the plugin with Vault
-vault plugin register -sha256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:0.0.2 | cut -d: -f2) \
+# Get the Docker image SHA256
+PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:0.0.2 | cut -d: -f2)
+
+# Register the plugin runtime (if using containerized plugins)
+vault plugin runtime register -type=container -rootless=true -oci_runtime=runsc runsc
+
+# Register the plugin with Vault (replace 0.0.2 with your version)
+vault plugin register \
+  -sha256="$PLUGIN_SHA256" \
+  -oci_image="vault-plugin-secrets-openai" \
+  -runtime="runsc" \
+  -version="0.0.2" \
   secret vault-plugin-secrets-openai
 
 # Enable the secrets engine
@@ -252,7 +262,7 @@ Key                           Value
 admin_api_key_id              key_OInm3Qed3kNn4BUQ
 api_endpoint                  https://api.openai.com/v1
 disable_automated_rotation    false
-last_rotated                  2025-06-09T22:58:19+01:00
+last_rotated                  2025-07-02T15:30:45+00:00
 organization_id               org-gAZ0NbaPX8FD2YcdLsHiKx8v
 rotation_period               720h
 rotation_schedule             n/a
