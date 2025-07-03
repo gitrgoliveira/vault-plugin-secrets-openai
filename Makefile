@@ -8,7 +8,7 @@ GOOS = $(shell go env GOOS)
 GOVERSION = $(shell go version | awk '{print $$3}')
 BUILD_DIR = ./bin
 PLUGIN_NAME = vault-plugin-secrets-openai
-VERSION ?= 0.1.0
+VERSION ?= 0.0.3
 COMMIT_HASH = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
