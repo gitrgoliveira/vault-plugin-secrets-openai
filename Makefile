@@ -41,7 +41,7 @@ COLOR_BLUE = \033[34m
 
 # Default target
 # =============================================================================
-all: check-fmt test lint staticcheck-ci build
+all: check-fmt test lint-strict staticcheck-ci build
 
 # Help target
 # =============================================================================
@@ -132,7 +132,7 @@ test-cover: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "$(COLOR_GREEN)✓ Coverage report generated: coverage.html$(COLOR_RESET)"
 
-test-all: check-fmt lint staticcheck test ## Run all tests and checks
+test-all: check-fmt lint-strict staticcheck test ## Run all tests and checks
 	@echo "$(COLOR_GREEN)✓ All tests and checks passed$(COLOR_RESET)"
 
 # Code Quality Targets
@@ -163,7 +163,16 @@ lint: ## Run basic linting
 	go mod tidy
 	@echo "$(COLOR_GREEN)✓ Linting complete$(COLOR_RESET)"
 
-lint-strict: lint ## Run strict linting checks
+golangci-lint: ## Run golangci-lint
+	@echo "$(COLOR_GREEN)Running golangci-lint...$(COLOR_RESET)"
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "$(COLOR_YELLOW)golangci-lint not found, installing...$(COLOR_RESET)"; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	fi
+	golangci-lint run --timeout=5m
+	@echo "$(COLOR_GREEN)✓ golangci-lint complete$(COLOR_RESET)"
+
+lint-strict: lint golangci-lint ## Run strict linting checks
 	@echo "$(COLOR_GREEN)Running strict linting checks...$(COLOR_RESET)"
 	@echo "$(COLOR_GREEN)✓ Strict linting complete$(COLOR_RESET)"
 
@@ -200,6 +209,7 @@ deps-install: ## Install development dependencies
 	@echo "$(COLOR_GREEN)Installing development dependencies...$(COLOR_RESET)"
 	go install honnef.co/go/tools/cmd/staticcheck@latest
 	go install golang.org/x/tools/cmd/goimports@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@echo "$(COLOR_GREEN)✓ Development dependencies installed$(COLOR_RESET)"
 
 # Utility Targets
@@ -298,7 +308,7 @@ release-all: build-cross docker-build ## Build release for all platforms
 
 # CI/CD Targets
 # =============================================================================
-ci: deps-check check-fmt lint staticcheck-ci test ## Run CI pipeline
+ci: deps-check check-fmt lint-strict staticcheck-ci test ## Run CI pipeline
 	@echo "$(COLOR_GREEN)✓ CI pipeline completed successfully$(COLOR_RESET)"
 
 ci-build: ci build-release ## Full CI build pipeline
