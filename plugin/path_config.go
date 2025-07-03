@@ -310,24 +310,8 @@ func (b *backend) validateProject(ctx context.Context, s logical.Storage, projec
 	}
 
 	// Ensure client is configured
-	if b.client == nil {
-		config, err := getConfig(ctx, s)
-		if err != nil {
-			return nil, fmt.Errorf("error getting OpenAI configuration: %w", err)
-		}
-		if config == nil {
-			return nil, fmt.Errorf("OpenAI is not configured")
-		}
-		b.client = NewClient(config.AdminAPIKey, b.Logger())
-		clientConfig := &Config{
-			AdminAPIKey:    config.AdminAPIKey,
-			AdminAPIKeyID:  config.AdminAPIKeyID,
-			APIEndpoint:    config.APIEndpoint,
-			OrganizationID: config.OrganizationID,
-		}
-		if err := b.client.SetConfig(clientConfig); err != nil {
-			return nil, fmt.Errorf("error configuring OpenAI client: %w", err)
-		}
+	if err := b.ensureClientConfigured(ctx, s); err != nil {
+		return nil, err
 	}
 
 	// Validate project with OpenAI API

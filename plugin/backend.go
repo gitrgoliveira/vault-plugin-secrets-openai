@@ -116,18 +116,11 @@ func (b *backend) initialize(ctx context.Context, initRequest *logical.Initializ
 
 	// Initialize the client if config exists
 	if config != nil {
-		b.client = NewClient(config.AdminAPIKey, b.Logger())
-
-		// Configure the client with full config including organization ID
-		clientConfig := &Config{
-			AdminAPIKey:    config.AdminAPIKey,
-			APIEndpoint:    config.APIEndpoint,
-			OrganizationID: config.OrganizationID,
-		}
-
-		if err := b.client.SetConfig(clientConfig); err != nil {
+		client, err := b.configureClientFromStorage(ctx, initRequest.Storage)
+		if err != nil {
 			return err
 		}
+		b.client = client
 	}
 
 	return nil

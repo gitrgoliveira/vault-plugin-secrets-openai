@@ -12,15 +12,6 @@ import (
 // These tests validate the service account name validation logic based on
 // common API resource naming conventions and observed behavior
 
-// Helper to generate repeated strings
-func repeat(s string, count int) string {
-	result := ""
-	for i := 0; i < count; i++ {
-		result += s
-	}
-	return result
-}
-
 func TestValidateServiceAccountName(t *testing.T) {
 	tests := []struct {
 		name        string

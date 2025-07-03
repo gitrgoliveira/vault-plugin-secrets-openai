@@ -64,6 +64,27 @@ func (m *MockOpenAIServer) ClearFailureMode() {
 	m.failureMessage = ""
 }
 
+// Helper methods for common HTTP responses
+func (m *MockOpenAIServer) writeMethodNotAllowed(w http.ResponseWriter) {
+	writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+}
+
+func (m *MockOpenAIServer) writeNotFound(w http.ResponseWriter, message string) {
+	writeError(w, http.StatusNotFound, "not_found", message)
+}
+
+// writeJSONResponse writes a JSON response with proper error handling
+func (m *MockOpenAIServer) writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
+		// If we can't encode the response, try to write a simple error
+		// This is already a failure case, so best effort
+		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
+	}
+}
+
 // handler processes all incoming requests to the mock server
 func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 	// Special handling for admin API key endpoints
@@ -73,7 +94,7 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Check authorization for all other endpoints
 		authHeader := r.Header.Get("Authorization")
-		if authHeader != "Bearer test-key" {
+		if authHeader != "Bearer "+TestAPIKey {
 			writeError(w, http.StatusUnauthorized, "invalid_api_key", "Invalid API key")
 			return
 		}
@@ -104,10 +125,10 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 			if serviceAccountID != "" {
 				m.deleteServiceAccount(w, r, projectID, serviceAccountID)
 			} else {
-				writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+				m.writeMethodNotAllowed(w)
 			}
 		default:
-			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+			m.writeMethodNotAllowed(w)
 		}
 		return
 	}
@@ -127,10 +148,10 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 			if keyID != "" {
 				m.revokeAdminAPIKey(w, r, keyID)
 			} else {
-				writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+				m.writeMethodNotAllowed(w)
 			}
 		default:
-			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+			m.writeMethodNotAllowed(w)
 		}
 		return
 	}
@@ -212,13 +233,7 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 	}
 
 	// Return the created service account and API key
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
+	m.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // getServiceAccount handles service account retrieval requests
@@ -229,25 +244,19 @@ func (m *MockOpenAIServer) getServiceAccount(w http.ResponseWriter, r *http.Requ
 	// Check if project exists
 	projectAccounts, exists := m.serviceAccounts[projectID]
 	if !exists {
-		writeError(w, http.StatusNotFound, "not_found", "Project not found")
+		m.writeNotFound(w, "Project not found")
 		return
 	}
 
 	// Check if service account exists
 	svcAcc, exists := projectAccounts[serviceAccountID]
 	if !exists {
-		writeError(w, http.StatusNotFound, "not_found", "Service account not found")
+		m.writeNotFound(w, "Service account not found")
 		return
 	}
 
 	// Return the service account
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(svcAcc); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
+	m.writeJSONResponse(w, http.StatusOK, svcAcc)
 }
 
 // listServiceAccounts handles service account listing requests
@@ -259,13 +268,7 @@ func (m *MockOpenAIServer) listServiceAccounts(w http.ResponseWriter, r *http.Re
 	projectAccounts, exists := m.serviceAccounts[projectID]
 	if !exists {
 		// Return empty list for non-existent projects
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(map[string][]ServiceAccount{"data": {}}); err != nil {
-			m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-			writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-			return
-		}
+		m.writeJSONResponse(w, http.StatusOK, map[string][]ServiceAccount{"data": {}})
 		return
 	}
 
@@ -276,13 +279,7 @@ func (m *MockOpenAIServer) listServiceAccounts(w http.ResponseWriter, r *http.Re
 	}
 
 	// Return the list of service accounts
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string][]ServiceAccount{"data": accounts}); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
+	m.writeJSONResponse(w, http.StatusOK, map[string][]ServiceAccount{"data": accounts})
 }
 
 // deleteServiceAccount handles service account deletion requests
@@ -299,13 +296,13 @@ func (m *MockOpenAIServer) deleteServiceAccount(w http.ResponseWriter, r *http.R
 	// Check if project exists
 	projectAccounts, exists := m.serviceAccounts[projectID]
 	if !exists {
-		writeError(w, http.StatusNotFound, "not_found", "Project not found")
+		m.writeNotFound(w, "Project not found")
 		return
 	}
 
 	// Check if service account exists
 	if _, exists := projectAccounts[serviceAccountID]; !exists {
-		writeError(w, http.StatusNotFound, "not_found", "Service account not found")
+		m.writeNotFound(w, "Service account not found")
 		return
 	}
 
@@ -380,13 +377,7 @@ func (m *MockOpenAIServer) createAdminAPIKey(w http.ResponseWriter, r *http.Requ
 	key.Owner.Role = "owner"
 
 	// Return the created admin API key
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(key); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
+	m.writeJSONResponse(w, http.StatusOK, key)
 }
 
 // listAdminAPIKeys handles admin API key listing requests
@@ -416,13 +407,7 @@ func (m *MockOpenAIServer) listAdminAPIKeys(w http.ResponseWriter, r *http.Reque
 	keys[0].Owner.CreatedAt = nowUnix
 	keys[0].Owner.Role = "owner"
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string][]adminAPIKey{"data": keys}); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
+	m.writeJSONResponse(w, http.StatusOK, map[string][]adminAPIKey{"data": keys})
 }
 
 // revokeAdminAPIKey handles admin API key revocation requests
@@ -435,14 +420,20 @@ func (m *MockOpenAIServer) revokeAdminAPIKey(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Helper function to generate a random ID string
+// Helper function to generate a random ID string for testing
 func generateRandomID(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[i%len(charset)]
+	// Use the same secure random string generation as the main code
+	result, err := generateRandomString(length)
+	if err != nil {
+		// For tests, fall back to a simple pattern if crypto/rand fails
+		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+		fallback := make([]byte, length)
+		for i := range fallback {
+			fallback[i] = charset[i%len(charset)]
+		}
+		return string(fallback)
 	}
-	return string(result)
+	return result
 }
 
 // Helper function to write an error response

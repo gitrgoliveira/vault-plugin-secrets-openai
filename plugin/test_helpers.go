@@ -5,12 +5,26 @@ package openaisecrets
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/sdk/rotation"
 	"github.com/stretchr/testify/require"
+)
+
+// Test constants to reduce duplication across test files
+const (
+	TestAPIKey         = "test-key"
+	TestAdminAPIKeyID  = "test-admin-key-id"
+	TestOrganizationID = "org-123"
+	TestProjectID      = "proj_123"
+	TestProjectID2     = "proj_456"
+	TestProjectID3     = "proj_789"
+	TestServiceAccName = "test-service-account"
+	TestMountPoint     = "openai/"
+	TestConfigPath     = "config"
 )
 
 // Project represents the OpenAI project details response used in tests.
@@ -138,4 +152,13 @@ func (d testSystemView) RegisterRotationJob(_ context.Context, _ *rotation.Rotat
 func (d testSystemView) DeregisterRotationJob(_ context.Context, _ *rotation.RotationJobDeregisterRequest) error {
 	// Mock implementation for tests - just return success
 	return nil
+}
+
+// repeat generates a repeated string for testing purposes
+func repeat(s string, count int) string {
+	if count <= 0 {
+		return ""
+	}
+	// Use strings.Repeat for better performance
+	return strings.Repeat(s, count)
 }

@@ -307,16 +307,8 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	}
 
 	// Initialize the client if it hasn't been
-	if b.client == nil {
-		config, err := getConfig(ctx, req.Storage)
-		if err != nil {
-			return nil, fmt.Errorf("error getting OpenAI configuration: %w", err)
-		}
-		if config == nil {
-			return logical.ErrorResponse("OpenAI is not configured"), nil
-		}
-
-		b.client = NewClient(config.AdminAPIKey, b.Logger())
+	if err := b.ensureClientConfigured(ctx, req.Storage); err != nil {
+		return logical.ErrorResponse("OpenAI configuration error: %s", err.Error()), nil
 	}
 
 	// Generate a random suffix for the service account name
@@ -462,16 +454,8 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 	b.Logger().Debug("revoking API key", "api_key_id", apiKeyID, "service_account_id", serviceAccountID)
 
 	// Initialize the client if it hasn't been
-	if b.client == nil {
-		config, err := getConfig(ctx, req.Storage)
-		if err != nil {
-			return nil, fmt.Errorf("error getting OpenAI configuration: %w", err)
-		}
-		if config == nil {
-			return logical.ErrorResponse("OpenAI is not configured"), nil
-		}
-
-		b.client = NewClient(config.AdminAPIKey, b.Logger())
+	if err := b.ensureClientConfigured(ctx, req.Storage); err != nil {
+		return logical.ErrorResponse("OpenAI configuration error: %s", err.Error()), nil
 	}
 
 	// Delete the service account
