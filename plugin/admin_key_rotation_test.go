@@ -19,7 +19,8 @@ func TestAdminKeyRotation_Manual(t *testing.T) {
 	mockServer := NewMockOpenAIServer()
 	defer mockServer.Close()
 
-	b := Backend()
+	mockClient := &mockClient{}
+	b := Backend(mockClient)
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
@@ -64,7 +65,8 @@ func TestAdminKeyRotation_Schedule(t *testing.T) {
 	mockServer := NewMockOpenAIServer()
 	defer mockServer.Close()
 
-	b := Backend()
+	mockClient := &mockClient{}
+	b := Backend(mockClient)
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
@@ -107,7 +109,8 @@ func TestAdminKeyRotation_Automatic(t *testing.T) {
 	mockServer := NewMockOpenAIServer()
 	defer mockServer.Close()
 
-	b := Backend()
+	mockClient := &mockClient{}
+	b := Backend(mockClient)
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 

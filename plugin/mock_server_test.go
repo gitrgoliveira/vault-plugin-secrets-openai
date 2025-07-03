@@ -82,7 +82,6 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 	// Match URL patterns and dispatch to appropriate handler
 	// Only supporting the correct OpenAI API paths with required /organization prefix
 	serviceAccountsPattern := regexp.MustCompile(`/v1/organization/projects/([^/]+)/service_accounts(?:/([^/]+))?`)
-	apiKeysPattern := regexp.MustCompile(`/v1/organization/api_keys(?:/([^/]+))?`)
 	adminAPIKeysPattern := regexp.MustCompile(`/v1/organization/admin_api_keys(?:/([^/]+))?`)
 
 	if matches := serviceAccountsPattern.FindStringSubmatch(r.URL.Path); matches != nil {
@@ -104,31 +103,6 @@ func (m *MockOpenAIServer) handler(w http.ResponseWriter, r *http.Request) {
 		case http.MethodDelete:
 			if serviceAccountID != "" {
 				m.deleteServiceAccount(w, r, projectID, serviceAccountID)
-			} else {
-				writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
-			}
-		default:
-			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
-		}
-		return
-	}
-
-	if matches := apiKeysPattern.FindStringSubmatch(r.URL.Path); matches != nil {
-		keyID := ""
-		if len(matches) > 1 {
-			keyID = matches[1]
-		}
-
-		switch r.Method {
-		case http.MethodGet:
-			if keyID == "" {
-				m.listAPIKeys(w, r)
-			} else {
-				m.getAPIKey(w, r, keyID)
-			}
-		case http.MethodDelete:
-			if keyID != "" {
-				m.deleteAPIKey(w, r, keyID)
 			} else {
 				writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 			}
@@ -344,88 +318,6 @@ func (m *MockOpenAIServer) deleteServiceAccount(w http.ResponseWriter, r *http.R
 			delete(m.apiKeys, keyID)
 		}
 	}
-
-	// Return success with empty response
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// getAPIKey handles API key retrieval requests
-func (m *MockOpenAIServer) getAPIKey(w http.ResponseWriter, r *http.Request, keyID string) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	// Check if API key exists
-	apiKey, exists := m.apiKeys[keyID]
-	if !exists {
-		writeError(w, http.StatusNotFound, "not_found", "API key not found")
-		return
-	}
-
-	// Create a copy without the key value (API doesn't return this after creation)
-	keyResponse := *apiKey
-	keyResponse.Value = ""
-
-	// Return the API key info
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(keyResponse); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
-}
-
-// listAPIKeys handles API key listing requests
-func (m *MockOpenAIServer) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	// Extract service account ID from query params if provided
-	serviceAccountID := r.URL.Query().Get("service_account_id")
-
-	// Collect all matching API keys
-	keys := make([]APIKey, 0)
-	for _, key := range m.apiKeys {
-		// Filter by service account ID if provided
-		if serviceAccountID != "" && key.ServiceAccID != serviceAccountID {
-			continue
-		}
-
-		// Create a copy without the key value
-		keyInfo := *key
-		keyInfo.Value = ""
-		keys = append(keys, keyInfo)
-	}
-
-	// Return the list of API keys
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string][]APIKey{"data": keys}); err != nil {
-		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
-		writeError(w, http.StatusInternalServerError, "encoding_error", m.failureMessage)
-		return
-	}
-}
-
-// deleteAPIKey handles API key deletion requests
-func (m *MockOpenAIServer) deleteAPIKey(w http.ResponseWriter, r *http.Request, keyID string) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	// Check if we should simulate a failure
-	if m.failureMode == "delete_key" {
-		writeError(w, m.failureStatusCode, "server_error", m.failureMessage)
-		return
-	}
-
-	// Check if API key exists
-	if _, exists := m.apiKeys[keyID]; !exists {
-		writeError(w, http.StatusNotFound, "not_found", "API key not found")
-		return
-	}
-
-	// Delete the API key
-	delete(m.apiKeys, keyID)
 
 	// Return success with empty response
 	w.WriteHeader(http.StatusNoContent)

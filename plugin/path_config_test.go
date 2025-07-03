@@ -14,7 +14,8 @@ import (
 )
 
 func TestConfig_Paths(t *testing.T) {
-	b := Backend()
+	mockClient := &mockClient{}
+	b := Backend(mockClient)
 
 	paths := b.pathAdminConfig()
 	assert.Len(t, paths, 2, "expected 2 admin config paths")
@@ -22,7 +23,8 @@ func TestConfig_Paths(t *testing.T) {
 }
 
 func TestConfig_AdminConfig_CRUD(t *testing.T) {
-	b := Backend()
+	mockClient := &mockClient{}
+	b := Backend(mockClient)
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 

@@ -21,7 +21,6 @@ import (
 type ClientAPI interface {
 	CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error)
 	DeleteServiceAccount(ctx context.Context, id string, projectID ...string) error
-	DeleteAPIKey(ctx context.Context, id string) error
 	SetConfig(config *Config) error
 	ListServiceAccounts(ctx context.Context, projectID string) ([]*ServiceAccount, error)
 	GetServiceAccount(ctx context.Context, serviceAccountID, projectID string) (*ServiceAccount, error)
@@ -30,7 +29,9 @@ type ClientAPI interface {
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
-	b := Backend()
+	// Create a new OpenAI client with the logger from the backend config
+	openaiClient := NewClient("", conf.Logger)
+	b := Backend(openaiClient)
 	if err := b.Setup(ctx, conf); err != nil {
 		return nil, err
 	}
@@ -38,12 +39,21 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 	return b, nil
 }
 
-func Backend() *backend {
+func Backend(client ClientAPI) *backend {
+	// Extract logger from the client if possible
+	var logger hclog.Logger
+	if c, ok := client.(*Client); ok && c != nil {
+		logger = c.logger
+	} else {
+		logger = hclog.NewNullLogger()
+	}
+
 	b := &backend{
-		client:            nil, // Will be initialized during config
+		client:            client,
 		credRotationQueue: queue.New(),
 		roleLocks:         locksutil.CreateLocks(),
 		managedUsers:      make(map[string]struct{}),
+		logger:            logger,
 	}
 
 	b.Backend = &framework.Backend{
@@ -61,7 +71,7 @@ func Backend() *backend {
 			b.pathAdminConfig(),
 			b.pathDynamicSvcAccount(),
 			b.pathDynamicCredsCreate(),
-			b.paths(), // Add any additional paths (e.g., admin key rotation)
+			b.rotationPaths(), // Add rotation-related paths
 		),
 		InitializeFunc: b.initialize,
 		Secrets: []*framework.Secret{
@@ -75,8 +85,14 @@ func Backend() *backend {
 }
 
 func (b *backend) Setup(ctx context.Context, conf *logical.BackendConfig) error {
-	// Append custom paths to the existing backend paths
-	b.Backend.Paths = append(b.Backend.Paths, b.paths()...)
+	// Update the logger from the config if provided
+	if conf.Logger != nil {
+		// Update both the backend logger and the client logger if possible
+		b.logger = conf.Logger
+		if c, ok := b.client.(*Client); ok && c != nil {
+			c.logger = conf.Logger
+		}
+	}
 	return nil
 }
 
@@ -155,6 +171,9 @@ type backend struct {
 	// client is the OpenAI API client used to interact with the OpenAI API
 	client ClientAPI
 
+	// logger stores the plugin's logger
+	logger hclog.Logger
+
 	// CredRotationQueue is an in-memory priority queue used to track admin key rotation.
 	// Backends will have a PriorityQueue
 	// initialized on setup, but only backends that are mounted by a primary
@@ -178,7 +197,10 @@ type backend struct {
 
 // Logger returns the backend's logger
 func (b *backend) Logger() hclog.Logger {
-	return b.Backend.Logger()
+	if b.logger != nil {
+		return b.logger
+	}
+	return hclog.NewNullLogger()
 }
 
 const backendHelp = `

@@ -474,14 +474,7 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 		b.client = NewClient(config.AdminAPIKey, b.Logger())
 	}
 
-	// Delete the API key
-	if err := b.client.DeleteAPIKey(ctx, apiKeyID); err != nil {
-		b.emitAPIErrorMetric("DeleteAPIKey", "error")
-		b.Logger().Error("error deleting API key", "api_key_id", apiKeyID, "error", err)
-		// Continue to try to delete the service account even if API key deletion fails
-	}
-
-	// Delete the service account - include projectID as required by the OpenAI API
+	// Delete the service account
 	if err := b.client.DeleteServiceAccount(ctx, serviceAccountID, projectID); err != nil {
 		b.emitAPIErrorMetric("DeleteServiceAccount", "error")
 		return nil, fmt.Errorf("error deleting service account: %w", err)

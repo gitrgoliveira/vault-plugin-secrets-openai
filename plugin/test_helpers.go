@@ -24,12 +24,9 @@ type Project struct {
 type mockClient struct {
 	createServiceAccountFn func(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error)
 	deleteServiceAccountFn func(ctx context.Context, id string, projectID ...string) error
-	deleteAPIKeyFn         func(ctx context.Context, id string) error
 	setConfigFn            func(config *Config) error
 	listServiceAccountsFn  func(ctx context.Context, projectID string) ([]*ServiceAccount, error)
 	getServiceAccountFn    func(ctx context.Context, serviceAccountID, projectID string) (*ServiceAccount, error)
-
-	lastDeletedAPIKeyID string
 }
 
 func (m *mockClient) CreateServiceAccount(ctx context.Context, projectID string, req CreateServiceAccountRequest) (*ServiceAccount, *APIKey, error) {
@@ -46,13 +43,7 @@ func (m *mockClient) DeleteServiceAccount(ctx context.Context, id string, projec
 	}
 	return nil
 }
-func (m *mockClient) DeleteAPIKey(ctx context.Context, id string) error {
-	m.lastDeletedAPIKeyID = id
-	if m.deleteAPIKeyFn != nil {
-		return m.deleteAPIKeyFn(ctx, id)
-	}
-	return nil
-}
+
 func (m *mockClient) SetConfig(config *Config) error {
 	if m.setConfigFn != nil {
 		return m.setConfigFn(config)
@@ -89,8 +80,8 @@ func (m *mockClient) ValidateProject(ctx context.Context, projectID string) erro
 
 // getTestBackend returns a configured backend for testing.
 func getTestBackend(t *testing.T) *backend {
-	b := Backend()
-	b.client = &mockClient{}
+	mockClient := &mockClient{}
+	b := Backend(mockClient)
 	config := logical.TestBackendConfig()
 	config.Logger = hclog.NewNullLogger()
 	config.System = &logical.StaticSystemView{
