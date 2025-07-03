@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/hashicorp/vault/sdk/rotation"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,9 +85,11 @@ func getTestBackend(t *testing.T) *backend {
 	b := Backend(mockClient)
 	config := logical.TestBackendConfig()
 	config.Logger = hclog.NewNullLogger()
-	config.System = &logical.StaticSystemView{
-		DefaultLeaseTTLVal: defaultTTL,
-		MaxLeaseTTLVal:     maxTTL,
+	config.System = &testSystemView{
+		StaticSystemView: logical.StaticSystemView{
+			DefaultLeaseTTLVal: defaultTTL,
+			MaxLeaseTTLVal:     maxTTL,
+		},
 	}
 
 	err := b.Setup(context.Background(), config)
@@ -120,3 +123,19 @@ const (
 	defaultTTL = 3600
 	maxTTL     = 86400
 )
+
+// testSystemView provides a mock system view for testing that includes
+// rotation job management methods to prevent nil pointer dereferences
+type testSystemView struct {
+	logical.StaticSystemView
+}
+
+func (d testSystemView) RegisterRotationJob(_ context.Context, _ *rotation.RotationJobConfigureRequest) (string, error) {
+	// Mock implementation for tests - just return success
+	return "test-job-id", nil
+}
+
+func (d testSystemView) DeregisterRotationJob(_ context.Context, _ *rotation.RotationJobDeregisterRequest) error {
+	// Mock implementation for tests - just return success
+	return nil
+}

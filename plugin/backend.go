@@ -1,10 +1,15 @@
 // Copyright Ricardo Oliveira 2025.
 // SPDX-License-Identifier: MPL-2.0
 
+// Package openaisecrets implements a HashiCorp Vault secrets engine plugin
+// for managing OpenAI API keys and credentials. The plugin provides dynamic
+// credential generation, admin key rotation, and secure credential management
+// for OpenAI services.
 package openaisecrets
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -13,7 +18,6 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
-	"github.com/hashicorp/vault/sdk/queue"
 )
 
 // ClientAPI defines the interface for OpenAI client operations used by the backend
@@ -49,11 +53,10 @@ func Backend(client ClientAPI) *backend {
 	}
 
 	b := &backend{
-		client:            client,
-		credRotationQueue: queue.New(),
-		roleLocks:         locksutil.CreateLocks(),
-		managedUsers:      make(map[string]struct{}),
-		logger:            logger,
+		client:       client,
+		roleLocks:    locksutil.CreateLocks(),
+		managedUsers: make(map[string]struct{}),
+		logger:       logger,
 	}
 
 	b.Backend = &framework.Backend{
@@ -71,20 +74,25 @@ func Backend(client ClientAPI) *backend {
 			b.pathAdminConfig(),
 			b.pathDynamicSvcAccount(),
 			b.pathDynamicCredsCreate(),
-			b.rotationPaths(), // Add rotation-related paths
 		),
 		InitializeFunc: b.initialize,
 		Secrets: []*framework.Secret{
 			dynamicSecretCreds(b),
 		},
-		Clean:       b.clean,
-		BackendType: logical.TypeLogical,
+		Clean:            b.clean,
+		BackendType:      logical.TypeLogical,
+		RotateCredential: b.rotateRootCredential,
 	}
 
 	return b
 }
 
 func (b *backend) Setup(ctx context.Context, conf *logical.BackendConfig) error {
+	// Call the parent Setup method to ensure system view is properly set
+	if err := b.Backend.Setup(ctx, conf); err != nil {
+		return err
+	}
+
 	// Update the logger from the config if provided
 	if conf.Logger != nil {
 		// Update both the backend logger and the client logger if possible
@@ -120,48 +128,13 @@ func (b *backend) initialize(ctx context.Context, initRequest *logical.Initializ
 		if err := b.client.SetConfig(clientConfig); err != nil {
 			return err
 		}
-
-		// Initialize the rotation queue for admin key rotation
-		b.initRotationQueue(ctx, initRequest.Storage)
-
-		// Check if admin key needs immediate rotation first
-		if err := b.checkAdminKeyRotation(ctx, initRequest.Storage); err != nil {
-			b.Logger().Warn("Admin key rotation check failed", "error", err)
-			// Non-fatal error, continue initialization
-		}
-
-		// Configure the rotation job if config requests it
-		if config.ShouldRegisterRotationJob() {
-			b.Logger().Info("Setting up automated admin key rotation with Vault's rotation framework")
-			if err := b.setupAdminKeyRotation(ctx, initRequest.Storage); err != nil {
-				b.Logger().Error("Failed to setup automated admin key rotation", "error", err)
-				// Non-fatal error, continue initialization
-			} else {
-				b.Logger().Info("Automated admin key rotation successfully configured")
-			}
-		} else {
-			b.Logger().Info("Admin key rotation is disabled")
-		}
 	}
 
 	return nil
 }
 
 func (b *backend) clean(_ context.Context) {
-	// Stop the queue first
-	b.invalidateQueue()
-
-}
-
-// invalidateQueue cancels any background queue loading and destroys the queue.
-func (b *backend) invalidateQueue() {
-	b.Lock()
-	defer b.Unlock()
-
-	if b.cancelQueue != nil {
-		b.cancelQueue()
-	}
-	b.credRotationQueue = nil
+	// Cleanup any resources
 }
 
 type backend struct {
@@ -173,16 +146,6 @@ type backend struct {
 
 	// logger stores the plugin's logger
 	logger hclog.Logger
-
-	// CredRotationQueue is an in-memory priority queue used to track admin key rotation.
-	// Backends will have a PriorityQueue
-	// initialized on setup, but only backends that are mounted by a primary
-	// server or mounted as a local mount will perform the rotations.
-	//
-	// cancelQueue is used to remove the priority queue and terminate the
-	// background ticker.
-	credRotationQueue *queue.PriorityQueue
-	cancelQueue       context.CancelFunc
 
 	// roleLocks is used to lock modifications to roles in the queue, to ensure
 	// concurrent requests are not modifying the same role and possibly causing
@@ -249,4 +212,22 @@ func (b *backend) emitCredentialRevokedMetric(role string) {
 // Emit a metric when an API error occurs
 func (b *backend) emitAPIErrorMetric(endpoint, code string) {
 	IncrCounterWithLabels(context.Background(), []string{"openai", "api", "error"}, 1, []Label{{Name: "endpoint", Value: endpoint}, {Name: "code", Value: code}})
+}
+
+// rotateRootCredential implements the RotateCredential interface for Vault's rotation framework
+func (b *backend) rotateRootCredential(ctx context.Context, req *logical.Request) error {
+	b.Logger().Info("Root credential rotation triggered by Vault's rotation framework")
+
+	// Call the existing rotation implementation
+	rotated, err := b.rotateAdminAPIKey(ctx, req.Storage)
+	if err != nil {
+		return err
+	}
+
+	if !rotated {
+		return fmt.Errorf("admin API key rotation failed: no API key configured")
+	}
+
+	b.Logger().Info("Root credential rotation completed successfully")
+	return nil
 }

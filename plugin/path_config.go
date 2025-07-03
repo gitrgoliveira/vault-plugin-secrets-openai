@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/automatedrotationutil"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/hashicorp/vault/sdk/rotation"
 )
 
 const (
@@ -36,14 +37,21 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 	return []*framework.Path{
 		{
 			Pattern: configPath + "/rotate",
+			DisplayAttrs: &framework.DisplayAttributes{
+				OperationPrefix: "openai",
+				OperationVerb:   "rotate",
+				OperationSuffix: "root-credentials",
+			},
 			Operations: map[logical.Operation]framework.OperationHandler{
 				logical.UpdateOperation: &framework.PathOperation{
-					Callback: b.pathConfigRotate,
-					Summary:  "Rotate the admin API key.",
+					Callback:                    b.pathConfigRotateRoot,
+					ForwardPerformanceStandby:   true,
+					ForwardPerformanceSecondary: true,
+					Summary:                     "Rotate the root admin API key.",
 				},
 			},
-			HelpSynopsis:    "Rotate the admin API key",
-			HelpDescription: "Rotates the admin API key used for accessing the OpenAI API.",
+			HelpSynopsis:    "Rotate the root admin API key",
+			HelpDescription: "Rotates the root admin API key used for accessing the OpenAI API. This creates a new admin API key and revokes the old one.",
 		},
 		{
 			Pattern: configPath,
@@ -211,6 +219,36 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		return logical.ErrorResponse("error validating OpenAI configuration: %s", err), nil
 	}
 
+	var performedRotationManagerOperation string
+	if config.ShouldDeregisterRotationJob() {
+		performedRotationManagerOperation = "deregistration"
+		// Disable Automated Rotation and Deregister credentials if required
+		deregisterReq := &rotation.RotationJobDeregisterRequest{
+			MountPoint: req.MountPoint,
+			ReqPath:    req.Path,
+		}
+
+		b.Logger().Debug("Deregistering rotation job", "mount", req.MountPoint+req.Path)
+		if err := b.System().DeregisterRotationJob(ctx, deregisterReq); err != nil {
+			return logical.ErrorResponse("error deregistering rotation job: %s", err), nil
+		}
+	} else if config.ShouldRegisterRotationJob() {
+		performedRotationManagerOperation = "registration"
+		// Register the rotation job if it's required.
+		cfgReq := &rotation.RotationJobConfigureRequest{
+			MountPoint:       req.MountPoint,
+			ReqPath:          req.Path,
+			RotationSchedule: config.RotationSchedule,
+			RotationWindow:   config.RotationWindow,
+			RotationPeriod:   config.RotationPeriod,
+		}
+
+		b.Logger().Debug("Registering rotation job", "mount", req.MountPoint+req.Path)
+		if _, err = b.System().RegisterRotationJob(ctx, cfgReq); err != nil {
+			return logical.ErrorResponse("error registering rotation job: %s", err), nil
+		}
+	}
+
 	// Save the configuration
 	entry, err := logical.StorageEntryJSON(configPath, config)
 	if err != nil {
@@ -218,20 +256,20 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	}
 
 	if err := req.Storage.Put(ctx, entry); err != nil {
-		return nil, err
+		wrappedError := err
+		if performedRotationManagerOperation != "" {
+			b.Logger().Error("write to storage failed but the rotation manager still succeeded.",
+				"operation", performedRotationManagerOperation, "mount", req.MountPoint, "path", req.Path)
+
+			wrappedError = fmt.Errorf("write to storage failed but the rotation manager still succeeded; "+
+				"operation=%s, mount=%s, path=%s, storageError=%s", performedRotationManagerOperation, req.MountPoint, req.Path, err)
+		}
+
+		return nil, wrappedError
 	}
 
 	// Update backend client
 	b.client = client
-
-	// Schedule admin key rotation if enabled (automated rotation only)
-	if config.ShouldRegisterRotationJob() {
-		b.Logger().Info("Scheduling admin key rotation after configuration update")
-		if err := b.scheduleAdminKeyRotation(ctx, req.Storage); err != nil {
-			b.Logger().Warn("Failed to schedule admin key rotation", "error", err)
-			// Non-fatal error, continue
-		}
-	}
 
 	return nil, nil
 }
@@ -302,6 +340,25 @@ func (b *backend) validateProject(ctx context.Context, s logical.Storage, projec
 	}
 
 	return projectInfo, nil
+}
+
+// pathConfigRotateRoot handles manual rotation of the admin API key
+func (b *backend) pathConfigRotateRoot(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	if err := b.rotateRootCredential(ctx, req); err != nil {
+		return nil, err
+	}
+
+	cfg, err := getConfig(ctx, req.Storage)
+	if err != nil {
+		return nil, fmt.Errorf("rotated credentials but failed to reload config: %w", err)
+	}
+
+	return &logical.Response{
+		Data: map[string]interface{}{
+			"admin_api_key_id": cfg.AdminAPIKeyID,
+			"rotated_time":     cfg.LastRotatedTime.Format(time.RFC3339),
+		},
+	}, nil
 }
 
 const confHelpSyn = `

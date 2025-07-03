@@ -6,10 +6,10 @@ package openaisecrets
 import (
 	context "context"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
-	"github.com/hashicorp/vault/sdk/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,8 +19,8 @@ func TestAdminKeyRotation_Manual(t *testing.T) {
 	mockServer := NewMockOpenAIServer()
 	defer mockServer.Close()
 
-	mockClient := &mockClient{}
-	b := Backend(mockClient)
+	b := getTestBackend(t)
+
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
@@ -33,7 +33,14 @@ func TestAdminKeyRotation_Manual(t *testing.T) {
 		"rotation_period":  0, // Required field
 	}
 	fd := &framework.FieldData{Raw: configData, Schema: b.pathAdminConfig()[1].Fields}
-	_, err := b.pathConfigWrite(ctx, &logical.Request{Storage: storage}, fd)
+
+	// Create a proper request with mount point and path for testing
+	req := &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}
+	_, err := b.pathConfigWrite(ctx, req, fd)
 	require.NoError(t, err)
 
 	cfg, cfgErr := getConfig(ctx, storage)
@@ -65,8 +72,8 @@ func TestAdminKeyRotation_Schedule(t *testing.T) {
 	mockServer := NewMockOpenAIServer()
 	defer mockServer.Close()
 
-	mockClient := &mockClient{}
-	b := Backend(mockClient)
+	b := getTestBackend(t)
+
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
@@ -85,23 +92,20 @@ func TestAdminKeyRotation_Schedule(t *testing.T) {
 		Schema: b.pathAdminConfig()[1].Fields,
 	}
 
-	_, err := b.pathConfigWrite(ctx, &logical.Request{Storage: storage}, fd)
+	// Create a proper request with mount point and path for testing
+	req := &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}
+	_, err := b.pathConfigWrite(ctx, req, fd)
 	require.NoError(t, err)
 
-	// Create rotation queue
-	b.credRotationQueue = queue.New()
-
-	// Schedule rotation
-	err = b.scheduleAdminKeyRotation(ctx, storage)
-	assert.NoError(t, err)
-
-	// Verify item was added to queue
-	assert.Equal(t, 1, b.credRotationQueue.Len())
-
-	// To check the item, we need to pop it
-	item, err := b.credRotationQueue.Pop()
-	assert.NoError(t, err)
-	assert.Equal(t, "admin_api_key", item.Key)
+	// Test that the configuration was saved correctly and rotation can be triggered
+	cfg, cfgErr := getConfig(ctx, storage)
+	require.NoError(t, cfgErr)
+	require.NotNil(t, cfg)
+	assert.Equal(t, 1*time.Second, cfg.RotationPeriod)
 }
 
 func TestAdminKeyRotation_Automatic(t *testing.T) {
@@ -109,8 +113,8 @@ func TestAdminKeyRotation_Automatic(t *testing.T) {
 	mockServer := NewMockOpenAIServer()
 	defer mockServer.Close()
 
-	mockClient := &mockClient{}
-	b := Backend(mockClient)
+	b := getTestBackend(t)
+
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
@@ -131,21 +135,17 @@ func TestAdminKeyRotation_Automatic(t *testing.T) {
 		Raw:    configData,
 		Schema: b.pathAdminConfig()[1].Fields,
 	}
-	_, err := b.pathConfigWrite(ctx, &logical.Request{Storage: storage}, fd)
+
+	// Create a proper request with mount point and path for testing
+	req := &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}
+	_, err := b.pathConfigWrite(ctx, req, fd)
 	require.NoError(t, err)
 
-	// Initialize rotation queue
-	b.credRotationQueue = queue.New()
-
-	// Schedule admin key rotation
-	err = b.scheduleAdminKeyRotation(ctx, storage)
-	assert.NoError(t, err)
-
-	// Verify the queue has an item
-	assert.Equal(t, 1, b.credRotationQueue.Len())
-
-	// Instead of using processRotations which would start a goroutine,
-	// directly call rotateAdminAPIKey for testing
+	// Test that we can trigger rotation directly (simulating automated rotation)
 	rotated, err := b.rotateAdminAPIKey(ctx, storage)
 	assert.NoError(t, err)
 	assert.True(t, rotated, "Admin key should be rotated")
@@ -155,7 +155,4 @@ func TestAdminKeyRotation_Automatic(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, "test-key", cfg.AdminAPIKey, "API key should have been rotated")
 	assert.Contains(t, cfg.AdminAPIKey, "sk-adminkey", "API key should match the mock implementation")
-
-	// Verify the rotation queue was updated with a new scheduled rotation
-	assert.Equal(t, 1, b.credRotationQueue.Len(), "Queue should have one item after rotation")
 }

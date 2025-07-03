@@ -50,13 +50,13 @@ func TestCreateAdminAPIKeyNew(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
 	// Create a client using the test server
 	client := NewClient("test-key", hclog.NewNullLogger())
-	client.SetConfig(&Config{
+	_ = client.SetConfig(&Config{
 		AdminAPIKey:    "test-key",
 		APIEndpoint:    server.URL,
 		OrganizationID: "test-org",
@@ -100,13 +100,13 @@ func TestCreateAdminAPIKeyMissingValue(t *testing.T) { // Create a test server t
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
 	// Create a client using the test server
 	client := NewClient("test-key", hclog.NewNullLogger())
-	client.SetConfig(&Config{
+	_ = client.SetConfig(&Config{
 		AdminAPIKey:    "test-key",
 		APIEndpoint:    server.URL,
 		OrganizationID: "test-org",

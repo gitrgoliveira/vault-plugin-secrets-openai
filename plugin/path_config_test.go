@@ -14,8 +14,7 @@ import (
 )
 
 func TestConfig_Paths(t *testing.T) {
-	mockClient := &mockClient{}
-	b := Backend(mockClient)
+	b := getTestBackend(t)
 
 	paths := b.pathAdminConfig()
 	assert.Len(t, paths, 2, "expected 2 admin config paths")
@@ -23,8 +22,7 @@ func TestConfig_Paths(t *testing.T) {
 }
 
 func TestConfig_AdminConfig_CRUD(t *testing.T) {
-	mockClient := &mockClient{}
-	b := Backend(mockClient)
+	b := getTestBackend(t)
 	storage := &logical.InmemStorage{}
 	ctx := context.Background()
 
@@ -40,7 +38,11 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 		Schema: b.pathAdminConfig()[1].Fields,
 	}
 
-	resp, err := b.pathConfigWrite(ctx, &logical.Request{Storage: storage}, createData)
+	resp, err := b.pathConfigWrite(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, createData)
 	require.NoError(t, err)
 	require.Nil(t, resp) // On success, response should be nil
 
@@ -54,7 +56,11 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 		Schema: b.pathAdminConfig()[1].Fields,
 	}
 	missingKeyStorage := &logical.InmemStorage{} // Use fresh storage to ensure no config exists
-	resp, err = b.pathConfigWrite(ctx, &logical.Request{Storage: missingKeyStorage}, missingKeyData)
+	resp, err = b.pathConfigWrite(ctx, &logical.Request{
+		Storage:    missingKeyStorage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, missingKeyData)
 	require.NoError(t, err)
 	t.Logf("resp after missing admin_api_key: %#v", resp)
 	if assert.NotNil(t, resp) {
@@ -62,7 +68,11 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 	}
 
 	// Read config
-	resp, err = b.pathConfigRead(ctx, &logical.Request{Storage: storage}, &framework.FieldData{})
+	resp, err = b.pathConfigRead(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, &framework.FieldData{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "https://api.test.com/v1", resp.Data["api_endpoint"])
@@ -85,12 +95,20 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 		},
 		Schema: b.pathAdminConfig()[1].Fields,
 	}
-	resp, err = b.pathConfigWrite(ctx, &logical.Request{Storage: storage}, updateData)
+	resp, err = b.pathConfigWrite(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, updateData)
 	require.NoError(t, err)
 	require.Nil(t, resp) // On success, response should be nil
 
 	// Read updated config
-	resp, err = b.pathConfigRead(ctx, &logical.Request{Storage: storage}, &framework.FieldData{})
+	resp, err = b.pathConfigRead(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, &framework.FieldData{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "https://api.test.com/v1", resp.Data["api_endpoint"])
@@ -101,14 +119,19 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 	assert.Equal(t, "updated-key-id", config.AdminAPIKeyID)
 
 	// Delete config
-	_, err = b.pathConfigDelete(ctx, &logical.Request{Storage: storage}, &framework.FieldData{})
+	_, err = b.pathConfigDelete(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, &framework.FieldData{})
 	require.NoError(t, err)
 
 	// Read after delete
-	resp, err = b.pathConfigRead(ctx, &logical.Request{Storage: storage}, &framework.FieldData{})
+	resp, err = b.pathConfigRead(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, &framework.FieldData{})
 	require.NoError(t, err)
 	require.Nil(t, resp)
 }
-
-// Remove all references to b.pathProjectConfig() and use the project path schema directly if needed.
-// In tests, replace b.pathProjectConfig() with the schema definition inline or use b.Backend.Paths if needed.
