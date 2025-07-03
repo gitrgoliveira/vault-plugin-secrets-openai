@@ -78,16 +78,18 @@ if [ "$1" == "--integration" ]; then
     vault path-help openai
     vault path-help openai/config
     vault path-help openai/config/rotate
-    echo "Rotating OpenAI admin API key..."
-    # vault write -force openai/config/rotate
+    echo "Forcing rotation of OpenAI admin API key..."
+    vault write -force openai/config/rotate
 
     # Create a test role
     vault path-help openai/roles/
     vault write openai/roles/test-role project_id="$OPENAI_TEST_PROJECT_ID" \
         service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
         ttl=5s max_ttl=24h
+    # Read the role to verify it was created
+    vault read openai/roles/test-role
+
     # Issue dynamic credentials
-    vault path-help openai/creds/
     vault path-help openai/creds/test-role
     vault read openai/creds/test-role
 
