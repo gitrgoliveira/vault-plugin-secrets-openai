@@ -398,32 +398,6 @@ func (c *Client) DeleteServiceAccount(ctx context.Context, id string, projectID 
 	return nil
 }
 
-// NOTE: CreateAPIKey is no longer needed as API keys are created automatically
-// when creating a service account in the OpenAI API
-
-// DeleteAPIKey deletes an API key by ID
-func (c *Client) DeleteAPIKey(ctx context.Context, id string) error {
-	// Validate inputs
-	if id == "" {
-		return fmt.Errorf("API key ID is required")
-	}
-
-	// Log deletion attempt
-	c.logger.Debug("Deleting API key", "api_key_id", id)
-
-	path := fmt.Sprintf(apiKeysEndpoint+"/%s", id)
-	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
-	if err != nil {
-		c.logger.Error("Failed to delete API key",
-			"api_key_id", id,
-			"error", err)
-		return fmt.Errorf("error deleting API key: %w", err)
-	}
-
-	c.logger.Info("Deleted API key successfully", "api_key_id", id)
-	return nil
-}
-
 // GetServiceAccount gets a service account by ID
 func (c *Client) GetServiceAccount(ctx context.Context, id string, projectID string) (*ServiceAccount, error) {
 	// Validate inputs

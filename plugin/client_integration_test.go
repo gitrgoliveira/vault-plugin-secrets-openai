@@ -70,10 +70,6 @@ func TestClientIntegration_CompleteWorkflow(t *testing.T) {
 	assert.Len(t, accounts, 1)
 	assert.Equal(t, svcAcc.ID, accounts[0].ID)
 
-	// 4. Delete the API key
-	err = client.DeleteAPIKey(ctx, apiKey.ID)
-	require.NoError(t, err)
-
 	// 5. Delete the service account
 	err = client.DeleteServiceAccount(ctx, svcAcc.ID, projectID)
 	require.NoError(t, err)
