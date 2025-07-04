@@ -4,6 +4,9 @@ A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accoun
 
 This plugin was developed and tested with Vault 1.19.4.
 
+> [!IMPORTANT]
+> Use at your own risk and conduct your own testing before deploying. This plugin is not officially supported by HashiCorp and is provided as-is.
+>
 ---
 
 ## Table of Contents
