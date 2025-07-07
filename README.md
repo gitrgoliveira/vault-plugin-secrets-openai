@@ -100,19 +100,24 @@ service_account_id svc_abc123
 ## API Reference
 
 ### Configuration API
+
+#### Configure the Plugin
 ```
 POST /openai/config
-GET /openai/config
+PUT /openai/config
 ```
-Parameters:
-- `admin_api_key` - (Required) Admin API key for OpenAI
-- `admin_api_key_id` - (Required) Admin API key ID for OpenAI
-- `organization_id` - (Required) Organization ID for OpenAI
-- `api_endpoint` - (Optional) URL for the OpenAI API (default: https://api.openai.com/v1)
-- `rotation_period` - (Optional) Period in seconds between automatic admin API key rotations
-- `rotation_window` - (Optional) Window in seconds during which rotation can occur
+Configures the OpenAI secrets engine with admin API credentials.
 
-Example:
+**Parameters:**
+- `admin_api_key` (string, required) - Admin API key for OpenAI
+- `admin_api_key_id` (string, required) - Admin API key ID for OpenAI  
+- `organization_id` (string, required) - Organization ID for OpenAI
+- `api_endpoint` (string, optional) - URL for the OpenAI API (default: `https://api.openai.com/v1`)
+- `rotation_period` (duration, optional) - Period between automatic admin API key rotations
+- `rotation_window` (duration, optional) - Window during which rotation can occur
+- `disable_automated_rotation` (bool, optional) - Disable automated rotation of admin credentials
+
+**Example:**
 ```shell
 vault write openai/config \
   admin_api_key="sk-admin-..." \
@@ -121,30 +126,89 @@ vault write openai/config \
   rotation_period=604800
 ```
 
-### Dynamic Credentials API
+#### Read Configuration
 ```
-POST /openai/roles/:name
-GET /openai/roles/:name
-GET /openai/roles
-DELETE /openai/roles/:name
-GET /openai/creds/:role_name
+GET /openai/config
 ```
-Parameters:
-- `project_id` - (Required) Project ID to use for this role
-- `service_account_name_template` - (Optional) Template for service account name creation
-- `ttl` - (Optional) Default TTL for generated API keys
-- `max_ttl` - (Optional) Maximum TTL for generated API keys
+Returns the current configuration (sensitive fields are not returned).
 
-Example:
+**Response Fields:**
+- `api_endpoint` - The configured API endpoint
+- `organization_id` - The organization ID
+- `admin_api_key_id` - The admin API key ID
+- `rotation_period` - Automatic rotation period (if enabled)
+- `rotation_window` - Rotation window (if enabled)
+- `last_rotated` - Last rotation timestamp (if automated rotation is enabled)
+
+#### Delete Configuration
+```
+DELETE /openai/config
+```
+Removes the configuration.
+
+#### Rotate Admin API Key
+```
+POST /openai/config/rotate
+```
+Manually rotates the admin API key. Creates a new admin API key and revokes the old one.
+
+### Roles API
+
+#### Create/Update Role
+```
+POST /openai/roles/{name}
+PUT /openai/roles/{name}
+```
+Creates or updates a role definition for generating dynamic credentials.
+
+**Parameters:**
+- `name` (string, required) - Name of the role
+- `project_id` (string, required) - OpenAI Project ID (e.g., `proj_abc123`)
+- `service_account_name_template` (string, optional) - Template for service account names (default: `vault-{{.RoleName}}-{{.RandomSuffix}}`)
+- `service_account_description` (string, optional) - Description for service accounts (default: `Service account created by Vault`)
+- `ttl` (duration, optional) - Default TTL for API keys (default: `1h`)
+- `max_ttl` (duration, optional) - Maximum TTL for API keys (default: `24h`)
+
+**Example:**
 ```shell
 vault write openai/roles/analytics \
-  project_id="my-project" \
+  project_id="proj_abc123" \
   service_account_name_template="analytics-{{.RoleName}}-{{.RandomSuffix}}" \
   ttl=2h \
   max_ttl=24h
 ```
 
+#### Read Role
+```
+GET /openai/roles/{name}
+```
+Returns the configuration for a specific role.
+
+#### List Roles
+```
+GET /openai/roles
+```
+Lists all configured roles.
+
+#### Delete Role
+```
+DELETE /openai/roles/{name}
+```
+Deletes a role definition.
+
+### Dynamic Credentials API
+
 #### Generate Credentials
+```
+GET /openai/creds/{role_name}
+```
+Generates new dynamic OpenAI credentials using the specified role.
+
+**Parameters:**
+- `role_name` (string, required) - Name of the role to use
+- `ttl` (duration, optional) - Custom TTL for this credential (must not exceed role's max_ttl)
+
+**Example:**
 ```shell
 vault read openai/creds/analytics ttl=1h
 ```
@@ -177,19 +241,6 @@ make build
    ```shell
    vault secrets enable -path=openai -plugin-name=vault-plugin-secrets-openai plugin
    ```
-
----
-
-## Configuration
-
-Configure the plugin with your OpenAI Admin API key, admin API key ID, and organization ID. **Both the admin API key and key ID are required and must be kept up to date for secure operation.**
-
-```shell
-vault write openai/config \
-  admin_api_key="sk-admin-..." \
-  admin_api_key_id="admin-key-id-..." \
-  organization_id="org-123456"
-```
 
 ---
 
@@ -348,7 +399,7 @@ This project provides a robust Vagrant-based development environment for buildin
 
 ### Prerequisites
 - [Vagrant](https://www.vagrantup.com/)
-- [VirtualBox](https://www.virtualbox.org/) or another supported provider
+- [VirtualBox](https://www.virtualbox.org/)
 
 ### Quick Start (Vagrant)
 
