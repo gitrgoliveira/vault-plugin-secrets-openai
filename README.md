@@ -12,15 +12,13 @@ This plugin was developed and tested with Vault 1.19.4.
 ## Table of Contents
 - [Features](#features)
 - [Quick Start](#quick-start)
-- [Usage](#usage)
 - [API Reference](#api-reference)
 - [Installation](#installation)
-- [Configuration](#configuration)
 - [Metrics and Monitoring](#metrics-and-monitoring)
 - [Development](#development)
 - [Usage with Docker](#usage-with-docker)
 - [Usage without Docker](#usage-without-docker)
-- [Vagrant Development Environment](#vagrant-development-environment)
+- [Vagrant Development Environment](#vagrant-development-environment-recommended-for-linux-container-plugin-testing)
 - [License](#license)
 
 ---
