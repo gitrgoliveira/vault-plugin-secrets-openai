@@ -112,26 +112,6 @@ func getTestBackend(t *testing.T) *backend {
 	return b
 }
 
-// getTestStorage returns an in-memory storage for testing.
-func getTestStorage(t *testing.T) logical.Storage {
-	return &logical.InmemStorage{}
-}
-
-// insertTestRole creates a test dynamic role entry in storage.
-func insertTestRole(ctx context.Context, t *testing.T, storage logical.Storage, name string, projectName string) {
-	role := &dynamicRoleEntry{
-		ProjectID:                  projectName,
-		ServiceAccountNameTemplate: "vault-{{.RoleName}}-{{.RandomSuffix}}",
-		ServiceAccountDescription:  "Test service account for " + name,
-		TTL:                        defaultTTL,
-		MaxTTL:                     maxTTL,
-	}
-
-	entry, err := logical.StorageEntryJSON("roles/"+name, role)
-	require.NoError(t, err)
-	require.NoError(t, storage.Put(ctx, entry))
-}
-
 // Default TTL and MaxTTL for test roles
 const (
 	defaultTTL = 3600

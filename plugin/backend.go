@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-metrics"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/locksutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -170,42 +169,6 @@ The OpenAI secrets engine requires Admin API keys.
 
 After mounting this secrets engine, configure it using the "openai/config" path.
 `
-
-// Label represents a key-value pair for metric labels.
-type Label struct {
-	Name  string
-	Value string
-}
-
-// IncrCounterWithLabelsFuncType defines the function signature for metric emission
-// so it can be swapped in tests.
-type IncrCounterWithLabelsFuncType func(ctx context.Context, name []string, value float32, labels []Label)
-
-// IncrCounterWithLabels is a variable so it can be replaced in tests.
-var IncrCounterWithLabels IncrCounterWithLabelsFuncType = func(ctx context.Context, name []string, value float32, labels []Label) {
-	var mLabels []metrics.Label
-	for _, l := range labels {
-		mLabels = append(mLabels, metrics.Label{Name: l.Name, Value: l.Value})
-	}
-	metrics.IncrCounterWithLabels(name, value, mLabels)
-}
-
-// Emit a metric when a credential is issued
-func (b *backend) emitCredentialIssuedMetric(role string) {
-	b.Logger().Info("emitCredentialIssuedMetric called", "role", role)
-	IncrCounterWithLabels(context.Background(), []string{"openai", "creds", "issued"}, 1, []Label{{Name: "role", Value: role}})
-}
-
-// Emit a metric when a credential is revoked
-func (b *backend) emitCredentialRevokedMetric(role string) {
-	b.Logger().Info("emitCredentialRevokedMetric called", "role", role)
-	IncrCounterWithLabels(context.Background(), []string{"openai", "creds", "revoked"}, 1, []Label{{Name: "role", Value: role}})
-}
-
-// Emit a metric when an API error occurs
-func (b *backend) emitAPIErrorMetric(endpoint, code string) {
-	IncrCounterWithLabels(context.Background(), []string{"openai", "api", "error"}, 1, []Label{{Name: "endpoint", Value: endpoint}, {Name: "code", Value: code}})
-}
 
 // rotateRootCredential implements the RotateCredential interface for Vault's rotation framework
 func (b *backend) rotateRootCredential(ctx context.Context, req *logical.Request) error {

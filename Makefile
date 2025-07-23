@@ -54,6 +54,9 @@ help: ## Show this help message
 	@echo "$(COLOR_BOLD)Common workflows:$(COLOR_RESET)"
 	@echo "  $(COLOR_GREEN)make dev-setup$(COLOR_RESET)     - Complete development environment setup"
 	@echo "  $(COLOR_GREEN)make test-all$(COLOR_RESET)      - Run all tests and checks"
+	@echo "  $(COLOR_GREEN)make test-metrics$(COLOR_RESET)  - Run Prometheus metrics tests"
+	@echo "  $(COLOR_GREEN)make test-prometheus$(COLOR_RESET) - Test Prometheus metrics with live Vault (interactive)"
+	@echo "  $(COLOR_GREEN)make test-prometheus-ci$(COLOR_RESET) - Test Prometheus metrics (CI mode, no prompts)"
 	@echo "  $(COLOR_GREEN)make release$(COLOR_RESET)       - Build release version with Docker"
 
 # Build Targets
@@ -132,8 +135,27 @@ test-cover: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "$(COLOR_GREEN)✓ Coverage report generated: coverage.html$(COLOR_RESET)"
 
+test-metrics: ## Run metrics-specific tests
+	@echo "$(COLOR_GREEN)Running metrics tests...$(COLOR_RESET)"
+	go test -v ./plugin -run "TestMetric"
+	@echo "$(COLOR_GREEN)✓ Metrics tests passed$(COLOR_RESET)"
+
+test-prometheus: build ## Test Prometheus metrics integration with live Vault
+	@echo "$(COLOR_GREEN)Running Prometheus metrics integration test...$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Script will prompt for OpenAI credentials for comprehensive testing$(COLOR_RESET)"
+	./scripts/test_prometheus_metrics.sh
+	@echo "$(COLOR_GREEN)✓ Prometheus metrics test completed$(COLOR_RESET)"
+
+test-prometheus-ci: build ## Test Prometheus metrics integration (CI mode, no prompts)
+	@echo "$(COLOR_GREEN)Running Prometheus metrics integration test (CI mode)...$(COLOR_RESET)"
+	./scripts/test_prometheus_metrics.sh --ci
+	@echo "$(COLOR_GREEN)✓ Prometheus metrics test completed$(COLOR_RESET)"
+
 test-all: check-fmt lint-strict staticcheck test ## Run all tests and checks
 	@echo "$(COLOR_GREEN)✓ All tests and checks passed$(COLOR_RESET)"
+
+test-complete: check-fmt lint-strict staticcheck test test-metrics test-prometheus-ci ## Run all tests including metrics
+	@echo "$(COLOR_GREEN)✓ Complete test suite passed$(COLOR_RESET)"
 
 # Code Quality Targets
 # =============================================================================

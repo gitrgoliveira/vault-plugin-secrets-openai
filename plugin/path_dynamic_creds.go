@@ -355,7 +355,6 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 		Name: svcAccountName,
 	})
 	if err != nil {
-		b.emitAPIErrorMetric("CreateServiceAccount", "error")
 		return nil, fmt.Errorf("error creating service account: %w", err)
 	}
 
@@ -367,9 +366,6 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 		b.Logger().Error("failed to store service account mapping", "error", err)
 		// Continue anyway, as the credentials are still valid
 	}
-
-	// Emit metric for credential issuance
-	b.emitCredentialIssuedMetric(roleName)
 
 	// Generate the response
 	resp := b.Secret(dynamicSecretCredsType).Response(map[string]interface{}{
@@ -460,7 +456,6 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 
 	// Delete the service account
 	if err := b.client.DeleteServiceAccount(ctx, serviceAccountID, projectID); err != nil {
-		b.emitAPIErrorMetric("DeleteServiceAccount", "error")
 		return nil, fmt.Errorf("error deleting service account: %w", err)
 	}
 
@@ -469,9 +464,6 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 		b.Logger().Error("error deleting API key mapping", "api_key_id", apiKeyID, "error", err)
 		// This is not a fatal error, so continue
 	}
-
-	// Emit metric for credential revocation
-	b.emitCredentialRevokedMetric("dynamic")
 
 	return nil, nil
 }
