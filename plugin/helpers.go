@@ -6,6 +6,7 @@ package openaisecrets
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -70,4 +71,42 @@ func (b *backend) ensureClientConfigured(ctx context.Context, storage logical.St
 		b.client = client
 	}
 	return nil
+}
+
+// maskSensitiveString masks sensitive strings like API keys for safe logging
+// Shows first 4 and last 4 characters with masked middle for identification
+func maskSensitiveString(s string) string {
+	if s == "" {
+		return ""
+	}
+	
+	// For very short strings, mask completely
+	if len(s) <= 8 {
+		return "[REDACTED]"
+	}
+	
+	// For longer strings, show first 4 and last 4 chars with dots in between
+	return s[:4] + "..." + s[len(s)-4:]
+}
+
+// maskAPIKeyID masks API key IDs for safe logging
+func maskAPIKeyID(keyID string) string {
+	return maskSensitiveString(keyID)
+}
+
+// maskResponseBody masks potentially sensitive response body content for logging
+func maskResponseBody(body string) string {
+	if body == "" {
+		return ""
+	}
+	
+	// If the body contains potential API key patterns or is very long, mask it
+	if strings.Contains(strings.ToLower(body), "api") || 
+		strings.Contains(strings.ToLower(body), "key") || 
+		strings.Contains(strings.ToLower(body), "secret") ||
+		len(body) > 200 {
+		return "[RESPONSE_BODY_REDACTED]"
+	}
+	
+	return body
 }

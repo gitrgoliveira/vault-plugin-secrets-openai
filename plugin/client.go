@@ -214,7 +214,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 				"status", resp.StatusCode,
 				"error_type", errResp.Error.Type,
 				"error_code", errResp.Error.Code,
-				"message", errResp.Error.Message,
+				"message", maskResponseBody(errResp.Error.Message),
 				"param", errResp.Error.Param,
 				"method", method,
 				"path", path)
@@ -237,7 +237,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		// Fallback for non-standard error format
 		c.logger.Error("OpenAI API non-standard error",
 			"status", resp.StatusCode,
-			"body", string(respBody),
+			"body", maskResponseBody(string(respBody)),
 			"method", method,
 			"path", path)
 		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))

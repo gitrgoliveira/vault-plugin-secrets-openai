@@ -447,7 +447,7 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 	serviceAccountID := req.Secret.InternalData["service_account_id"].(string)
 	projectID := req.Secret.InternalData["project_id"].(string)
 
-	b.Logger().Debug("revoking API key", "api_key_id", apiKeyID, "service_account_id", serviceAccountID)
+	b.Logger().Debug("revoking API key", "api_key_id", maskAPIKeyID(apiKeyID), "service_account_id", serviceAccountID)
 
 	// Initialize the client if it hasn't been
 	if err := b.ensureClientConfigured(ctx, req.Storage); err != nil {
@@ -461,7 +461,7 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 
 	// Delete the API key mapping
 	if err := req.Storage.Delete(ctx, apiKeyMappingPath(apiKeyID)); err != nil {
-		b.Logger().Error("error deleting API key mapping", "api_key_id", apiKeyID, "error", err)
+		b.Logger().Error("error deleting API key mapping", "api_key_id", maskAPIKeyID(apiKeyID), "error", err)
 		// This is not a fatal error, so continue
 	}
 
