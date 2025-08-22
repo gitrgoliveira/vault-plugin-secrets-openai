@@ -505,7 +505,7 @@ func (c *Client) RevokeAdminAPIKey(ctx context.Context, keyID string) error {
 	path := fmt.Sprintf(adminAPIKeysEndpoint+"/%s", keyID)
 	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return fmt.Errorf("error revoking admin API key %s: %w", keyID, err)
+		return fmt.Errorf("error revoking admin API key: %w", err)
 	}
 	return nil
 }
