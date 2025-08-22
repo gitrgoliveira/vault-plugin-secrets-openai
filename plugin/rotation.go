@@ -113,15 +113,15 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 	// Update the current client
 	b.client = newClient
 
-	// Clean up the old key using the new client and the old key ID
+	// Clean up the previous key using the new client and previous key ID
 	if oldAdminKeyID != "" {
-		b.Logger().Debug("Cleaning up old admin API key", "oldAdminKeyID", maskAPIKeyID(oldAdminKeyID))
+		b.Logger().Debug("Cleaning up previous admin API key")
 		if err := newClient.RevokeAdminAPIKey(ctx, oldAdminKeyID); err != nil {
-			b.Logger().Error("Failed to revoke old admin key", "error", err)
+			b.Logger().Error("Failed to revoke previous admin key", "error", err)
 			return false, err
 		}
 	} else {
-		b.Logger().Warn("No old admin key ID found, skipping revocation")
+		b.Logger().Warn("No previous admin key ID found, skipping revocation")
 	}
 
 	b.Logger().Info("Admin API key rotation completed successfully")
