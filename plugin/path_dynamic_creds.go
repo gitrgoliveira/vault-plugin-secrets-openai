@@ -521,7 +521,7 @@ const dynamicRoleListHelpDesc = `
 This endpoint lists all roles that can be used to generate dynamic OpenAI API keys.
 `
 
-const dynamicCredsHelpSyn = `
+const dynamicCredsHelpSyn = ` // #nosec G101 -- False positive: This is a help text constant, not a hardcoded credential.
 Generate a new OpenAI API key.
 `
 
@@ -531,4 +531,4 @@ account and then generating an API key for that service account. The API key wil
 have a TTL as defined by the role or as specified in the request.
 `
 
-const dynamicSecretCredsType = "openai_api_key"
+const dynamicSecretCredsType = "openai_api_key" // #nosec G101 -- False positive: This is a constant type identifier, not a hardcoded credential.
