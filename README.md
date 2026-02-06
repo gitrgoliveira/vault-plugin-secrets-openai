@@ -1,11 +1,11 @@
 # Vault OpenAI Secrets Plugin
 
-A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accounts and API keys using the OpenAI Admin API. This plugin enables you to create, rotate, and revoke OpenAI project service accounts and API keys on demand, with full automation and security best practices.
+A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accounts and API keys using the OpenAI Admin API. This plugin creates, rotates, and revokes OpenAI project service accounts and API keys on demand with full automation.
 
-This plugin was developed and tested with Vault 1.19.4.
+I developed and tested this plugin with Vault 1.19.4.
 
 > [!IMPORTANT]
-> Use at your own risk and conduct your own testing before deploying. This plugin is not officially supported by HashiCorp and is provided as-is.
+> Use at your own risk. Test thoroughly before deploying to production. HashiCorp does not officially support this plugin.
 >
 ---
 
@@ -24,11 +24,11 @@ This plugin was developed and tested with Vault 1.19.4.
 ---
 
 ## Features
-- **Dynamic Service Accounts**: Create OpenAI service accounts (with API keys) with configurable TTLs for improved security.
-- **Automatic Cleanup**: Service accounts and API keys are automatically cleaned up when leases expire.
-- **Admin API Key Rotation**: Securely rotate OpenAI admin keys manually or on a schedule.
+- **Dynamic Service Accounts**: Create OpenAI service accounts with API keys. Configure TTLs for improved security.
+- **Automatic Cleanup**: Remove service accounts and API keys automatically when leases expire.
+- **Admin API Key Rotation**: Rotate OpenAI admin keys manually or on a schedule.
 - **Metrics and Monitoring**: Prometheus-compatible metrics for credential issuance, revocation, and API errors.
-- **Containerized Deployment**: Run as a containerized Vault plugin with Docker (Linux only).
+- **Containerized Deployment**: Run as a containerized Vault plugin with Docker on Linux.
 
 > **Note:** Only dynamic service account credentials are supported.
 
@@ -36,18 +36,18 @@ This plugin was developed and tested with Vault 1.19.4.
 
 ## Quick Start
 
-### 1. Download the Plugin
-You can download the pre-built plugin binary from the [latest release page](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/latest).
+### 1. Download the plugin
+Download the pre-built plugin binary from the [latest release page](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/latest).
 
-### 2. Extract the Plugin
+### 2. Extract the plugin
 ```shell
-# Extract the plugin binary (replace VERSION with the latest release version)
+# Replace VERSION with the latest release version
 mkdir -p ./bin
 curl -L -o ./bin/vault-plugin-secrets-openai https://github.com/gitrgoliveira/vault-plugin-secrets-openai/releases/download/VERSION/vault-plugin-secrets-openai
 chmod +x ./bin/vault-plugin-secrets-openai
 ```
 
-### 3. Start a Dev Vault Server and Register the Plugin
+### 3. Start a dev Vault server and register the plugin
 ```shell
 vault server -dev -dev-plugin-dir=./bin
 # In another terminal
@@ -58,7 +58,7 @@ vault plugin register -sha256=$(shasum -a 256 ./bin/vault-plugin-secrets-openai 
 vault secrets enable -path=openai vault-plugin-secrets-openai
 ```
 
-### 4. Configure the Plugin
+### 4. Configure the plugin
 ```shell
 vault write openai/config \
   admin_api_key="sk-admin-..." \
@@ -66,7 +66,7 @@ vault write openai/config \
   organization_id="org-123456"
 ```
 
-### 5. Create a Role
+### 5. Create a role
 ```shell
 vault write openai/roles/my-role \
   project_id="proj_my-project" \
@@ -75,7 +75,7 @@ vault write openai/roles/my-role \
   max_ttl=24h
 ```
 
-### 6. Generate an API Key
+### 6. Generate an API key
 ```shell
 vault read openai/creds/my-role
 ```
@@ -99,12 +99,12 @@ service_account_id svc_abc123
 
 ### Configuration API
 
-#### Configure the Plugin
+#### Configure the plugin
 ```
 POST /openai/config
 PUT /openai/config
 ```
-Configures the OpenAI secrets engine with admin API credentials.
+Configure the OpenAI secrets engine with admin API credentials.
 
 **Parameters:**
 - `admin_api_key` (string, required) - Admin API key for OpenAI
@@ -124,11 +124,11 @@ vault write openai/config \
   rotation_period=604800
 ```
 
-#### Read Configuration
+#### Read configuration
 ```
 GET /openai/config
 ```
-Returns the current configuration (sensitive fields are not returned).
+Read the current configuration. Sensitive fields are not returned.
 
 **Response Fields:**
 - `api_endpoint` - The configured API endpoint
@@ -138,26 +138,26 @@ Returns the current configuration (sensitive fields are not returned).
 - `rotation_window` - Rotation window (if enabled)
 - `last_rotated` - Last rotation timestamp (if automated rotation is enabled)
 
-#### Delete Configuration
+#### Delete configuration
 ```
 DELETE /openai/config
 ```
-Removes the configuration.
+Delete the configuration.
 
-#### Rotate Admin API Key
+#### Rotate admin API key
 ```
 POST /openai/config/rotate
 ```
-Manually rotates the admin API key. Creates a new admin API key and revokes the old one.
+Manually rotate the admin API key. This creates a new admin API key and revokes the old one.
 
 ### Roles API
 
-#### Create/Update Role
+#### Create or update role
 ```
 POST /openai/roles/{name}
 PUT /openai/roles/{name}
 ```
-Creates or updates a role definition for generating dynamic credentials.
+Create or update a role definition for generating dynamic credentials.
 
 **Parameters:**
 - `name` (string, required) - Name of the role
@@ -176,31 +176,31 @@ vault write openai/roles/analytics \
   max_ttl=24h
 ```
 
-#### Read Role
+#### Read role
 ```
 GET /openai/roles/{name}
 ```
-Returns the configuration for a specific role.
+Read the configuration for a specific role.
 
-#### List Roles
+#### List roles
 ```
 GET /openai/roles
 ```
-Lists all configured roles.
+List all configured roles.
 
-#### Delete Role
+#### Delete role
 ```
 DELETE /openai/roles/{name}
 ```
-Deletes a role definition.
+Delete a role definition.
 
 ### Dynamic Credentials API
 
-#### Generate Credentials
+#### Generate credentials
 ```
 GET /openai/creds/{role_name}
 ```
-Generates new dynamic OpenAI credentials using the specified role.
+Generate new dynamic OpenAI credentials using the specified role.
 
 **Parameters:**
 - `role_name` (string, required) - Name of the role to use
@@ -215,14 +215,14 @@ vault read openai/creds/analytics ttl=1h
 
 ## Installation
 
-### Building the Plugin
+### Build the plugin
 ```shell
 git clone https://github.com/gitrgoliveira/vault-plugin-secrets-openai.git
 cd vault-plugin-secrets-openai
 make build
 ```
 
-### Installing in Vault
+### Install in Vault
 1. Copy the plugin binary to your Vault plugins directory:
    ```shell
    cp ./bin/vault-plugin-secrets-openai /path/to/vault/plugins/
@@ -242,13 +242,13 @@ make build
 
 ---
 
-## Metrics and Monitoring
-This plugin emits Prometheus-compatible metrics via Vault's telemetry system for observability and monitoring. These metrics can be scraped by Prometheus or viewed via Vault's telemetry endpoints.
+## Metrics and monitoring
+This plugin emits Prometheus-compatible metrics through Vault's telemetry system. You can scrape these metrics with Prometheus or view them using Vault's telemetry endpoints.
 
 ---
 
 ## Development
-- Go 1.25.4+
+- Go 1.25.7+
 - Vault 1.19+ for containerized plugin support
 - Vagrant (for containerized plugin usage)
 
@@ -256,17 +256,17 @@ This plugin emits Prometheus-compatible metrics via Vault's telemetry system for
 
 ## Usage with Docker
 
-> **Note:** Building and running Vault plugins with Docker is only supported on Linux hosts. If you are on macOS or Windows, you must build the plugin binary on a Linux machine or use a Linux VM/container for plugin development and testing. See the [Vault documentation](https://developer.hashicorp.com/vault/docs/plugins#plugin-platform-support) for details.
+> **Note:** You can only build and run Vault plugins with Docker on Linux hosts. If you use macOS or Windows, build the plugin binary on a Linux machine or use a Linux VM or container for plugin development and testing. Refer to the [Vault documentation](https://developer.hashicorp.com/vault/docs/plugins#plugin-platform-support) for details.
 
-You can run the Vault OpenAI Secrets Plugin in a containerized environment using Docker. This is the recommended approach for most users.
+Run the Vault OpenAI Secrets Plugin in a containerized environment using Docker. I recommend this approach for most users.
 
-### 1. Build the Plugin Binary
+### 1. Build the plugin binary
 ```shell
 make build-release
 ```
 
-### 2. Build the Docker Image
-A sample Dockerfile is provided. Build the image:
+### 2. Build the Docker image
+This repository includes a sample Dockerfile. Build the image:
 ```shell
 make release VERSION=0.0.3
 ```
@@ -280,7 +280,7 @@ nohup env DOCKER_HOST=$DOCKER_HOST vault server -dev -dev-root-token-id=root > v
 
 ```
 
-### 4. Register and Enable the Plugin
+### 4. Register and enable the plugin
 ```bash
 # Get the Docker image SHA256
 PLUGIN_SHA256=$(docker images --no-trunc --format="{{ .ID }}" vault-plugin-secrets-openai:0.0.3 | cut -d: -f2)
@@ -300,7 +300,7 @@ vault plugin register \
 vault secrets enable -path=openai vault-plugin-secrets-openai
 ```
 
-### 5. Configure the Plugin
+### 5. Configure the plugin
 ```bash
 # Configure with your OpenAI admin API key
 vault write openai/config admin_api_key="$OPENAI_ADMIN_API_KEY" \
@@ -321,12 +321,12 @@ rotation_schedule             n/a
 rotation_window               0 
 ```
 
-The admin API key is used by Vault to create and manage service accounts in your OpenAI organization. The rotation period determines how often this root credential is automatically rotated. See all supported parameters here.
+Vault uses the admin API key to create and manage service accounts in your OpenAI organization. The rotation period determines how often Vault automatically rotates this root credential. Refer to the API documentation for all supported parameters.
 
-You can also use `vault write -force openai/config/rotate` to force the rotation.
+To force rotation, run `vault write -force openai/config/rotate`.
 
-### 6. Create Roles
-Roles define the permissions and TTL for credentials generated for specific applications:
+### 6. Create roles
+Roles define the permissions and TTL for credentials that you generate for specific applications:
 ```bash
 # Create a role for your application
 vault write openai/roles/my-application project_id="$OPENAI_TEST_PROJECT_ID" \
@@ -335,7 +335,7 @@ service_account_name_template="vault-{{.RoleName}}-{{.RandomSuffix}}" \
 ```
 ```shell
 
-### 7. Generate an API Key
+### 7. Generate an API key
 ```shell
 vault read openai/creds/my-application
 ```
@@ -357,14 +357,14 @@ service_account_id svc_abc123
 
 ## Usage without Docker
 
-You can also run the plugin directly on your host system (Linux/macOS) without Docker.
+You can run the plugin directly on your host system (Linux or macOS) without Docker.
 
-### 1. Build the Plugin Binary
+### 1. Build the plugin binary
 ```shell
 make build
 ```
 
-### 2. Start a Dev Vault Server and Register the Plugin
+### 2. Start a dev Vault server and register the plugin
 ```shell
 vault server -dev -dev-plugin-dir=./bin
 # In another terminal
@@ -374,7 +374,7 @@ vault plugin register -sha256=$(shasum -a 256 ./bin/vault-plugin-secrets-openai 
 vault secrets enable -path=openai -plugin-name=vault-plugin-secrets-openai plugin
 ```
 
-### 3. Configure the Plugin
+### 3. Configure the plugin
 ```shell
 vault write openai/config \
   admin_api_key="sk-admin-..." \
@@ -384,24 +384,24 @@ vault write openai/config \
 
 ---
 
-## Vagrant Development Environment (Recommended for Linux Container Plugin Testing)
+## Vagrant development environment (recommended for Linux container plugin testing)
 
-This project provides a robust Vagrant-based development environment for building, testing, and running the Vault OpenAI Secrets Plugin with support for rootless Docker and gVisor/runsc.
+This project includes a Vagrant-based development environment for building, testing, and running the Vault OpenAI Secrets Plugin with support for rootless Docker and gVisor/runsc.
 
 ### Features
-- Automated provisioning of Go, Docker (rootless), and gVisor/runsc for containerized plugin testing.
-- Rootless Docker setup for the `vagrant` user, with correct socket and runtime configuration.
-- gVisor/runsc installed from the official APT repository, with fallback to `runc` if runsc is not compatible with rootless mode.
-- Automated plugin build, Docker image creation, and Vault plugin registration inside the VM.
-- Integration and unit test scripts for plugin validation.
+- Automated provisioning of Go, Docker (rootless), and gVisor/runsc for containerized plugin testing
+- Rootless Docker setup for the `vagrant` user with correct socket and runtime configuration
+- gVisor/runsc installed from the official APT repository with fallback to `runc` if runsc is not compatible with rootless mode
+- Automated plugin build, Docker image creation, and Vault plugin registration inside the VM
+- Integration and unit test scripts for plugin validation
 
 ### Prerequisites
 - [Vagrant](https://www.vagrantup.com/)
 - [VirtualBox](https://www.virtualbox.org/)
 
-### Quick Start (Vagrant)
+### Quick start (Vagrant)
 
-1. **Start the Vagrant VM and provision:**
+1. **Start the Vagrant VM and provision**
    ```sh
    vagrant up
    ```
@@ -411,18 +411,18 @@ This project provides a robust Vagrant-based development environment for buildin
    - Build the plugin and Docker image
    - Start Vault in dev mode and register the plugin
 
-2. **SSH into the VM:**
+2. **SSH into the VM**
    ```sh
    vagrant ssh
    cd vault-plugin-secrets-openai
    ```
 
-3. **Run tests:**
-   - **Unit tests:**
+3. **Run tests**
+   - **Unit tests**
      ```sh
      ./scripts/run_tests.sh
      ```
-   - **Integration tests:**
+   - **Integration tests**
      ```sh
      ./scripts/run_tests.sh --integration
      ```
@@ -430,28 +430,28 @@ This project provides a robust Vagrant-based development environment for buildin
 
 #### Notes on Docker and gVisor/runsc
 - The provisioning scripts attempt to use `runsc` as the Docker runtime for containerized plugin testing.
-- **gVisor/runsc is not fully compatible with rootless Docker** due to systemd/cgroup limitations. If runsc fails, the scripts will automatically fall back to the default `runc` runtime for plugin build and Vault registration.
-- The correct Docker socket (`/run/user/1000/docker.sock`) is set via the `DOCKER_HOST` environment variable for all Vault and Docker operations.
+- gVisor/runsc is not fully compatible with rootless Docker due to systemd and cgroup limitations. If runsc fails, the scripts automatically fall back to the default `runc` runtime for plugin build and Vault registration.
+- The scripts set the correct Docker socket (`/run/user/1000/docker.sock`) using the `DOCKER_HOST` environment variable for all Vault and Docker operations.
 
-#### Environment Variables
-- `VAULT_ADDR`, `VAULT_TOKEN`, and `DOCKER_HOST` are set automatically in the VM for the `vagrant` user.
-- For integration tests, you will need to provide:
+#### Environment variables
+- The system automatically sets `VAULT_ADDR`, `VAULT_TOKEN`, and `DOCKER_HOST` in the VM for the `vagrant` user.
+- For integration tests, you must provide:
   - `OPENAI_ADMIN_API_KEY`
   - `OPENAI_ORG_ID`
   - `OPENAI_TEST_PROJECT_ID`
 
 #### Troubleshooting
-- If you see errors about Docker socket permissions or plugin registration, ensure that `DOCKER_HOST` is set to the rootless Docker socket and that Vault is running with this environment variable.
-- If you need to reprovision from scratch:
+- If you see errors about Docker socket permissions or plugin registration, verify that `DOCKER_HOST` is set to the rootless Docker socket and that Vault runs with this environment variable.
+- To reprovision from scratch:
   ```sh
   vagrant destroy -f
   vagrant up
   ```
 
-#### File Overview
-- `scripts/vagrant_provision_as_root.sh`: Installs system dependencies (Go, Docker, gVisor, etc.)
-- `scripts/vagrant_provision_as_user.sh`: Configures Docker rootless mode, builds the plugin, starts Vault, and registers the plugin.
-- `scripts/run_tests.sh`: Runs unit and integration tests for the plugin.
+#### File overview
+- `scripts/vagrant_provision_as_root.sh` - Installs system dependencies including Go, Docker, and gVisor
+- `scripts/vagrant_provision_as_user.sh` - Configures Docker rootless mode, builds the plugin, starts Vault, and registers the plugin
+- `scripts/run_tests.sh` - Runs unit and integration tests for the plugin
 
 ---
 

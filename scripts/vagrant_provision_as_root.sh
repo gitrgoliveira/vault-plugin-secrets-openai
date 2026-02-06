@@ -17,8 +17,8 @@ apt-get install -y make \
 
 apt-get install -y vault docker-ce docker-ce-cli containerd.io golang-go 
 
-# Upgrade Go to 1.25.4 if not already installed
-GO_VERSION="1.25.4"
+# Upgrade Go to 1.25.7 if not already installed
+GO_VERSION="1.25.7"
 if ! go version 2>/dev/null | grep -q "go$GO_VERSION"; then
   echo "Upgrading Go to $GO_VERSION..."
   wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
