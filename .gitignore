@@ -27,3 +27,4 @@ helper/metricsutil.go
 bin/vault-plugin-secrets-openai
 .vagrant/
 vault.log
+.DS_Store
