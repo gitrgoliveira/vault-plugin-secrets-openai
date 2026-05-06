@@ -1,5 +1,7 @@
 # Vault OpenAI Secrets Plugin
 
+[![CodeQL](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/actions/workflows/github-code-scanning/codeql)
+
 A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accounts and API keys using the OpenAI Admin API. This plugin creates, rotates, and revokes OpenAI project service accounts and API keys on demand with full automation.
 
 I developed and tested this plugin with Vault 1.19.4.
