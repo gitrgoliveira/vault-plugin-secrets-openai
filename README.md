@@ -1,6 +1,10 @@
 # Vault OpenAI Secrets Plugin
 
-[![CodeQL](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/actions/workflows/github-code-scanning/codeql)
+[![CI](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/workflows/CI/badge.svg)](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/security/code-scanning)
+[![Docker](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/workflows/Build%20and%20Publish%20Docker%20image%20to%20GHCR/badge.svg)](https://github.com/gitrgoliveira/vault-plugin-secrets-openai/pkgs/container/vault-plugin-secrets-openai)
+[![Go Version](https://img.shields.io/badge/go-1.26.2-blue?logo=go)](go.mod)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
 A HashiCorp Vault plugin for dynamic, secure management of OpenAI service accounts and API keys using the OpenAI Admin API. This plugin creates, rotates, and revokes OpenAI project service accounts and API keys on demand with full automation.
 
