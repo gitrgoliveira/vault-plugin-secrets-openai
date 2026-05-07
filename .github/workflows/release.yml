@@ -49,6 +49,8 @@ jobs:
         run: make test
       
       - name: Build release binaries
+        env:
+          CGO_ENABLED: "0"
         run: |
           # Build Linux binary
           GOOS=linux GOARCH=amd64 go build -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
