@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -136,6 +138,57 @@ type CreateServiceAccountRequest struct {
 	Name string `json:"name"`
 }
 
+// validateAPIEndpoint checks that the supplied endpoint URL is safe to use.
+//
+// Rules:
+//   - Must be a valid URL with a non-empty hostname.
+//   - For https endpoints: private and link-local IP addresses are rejected to
+//     prevent Server-Side Request Forgery (SSRF) against internal services.
+//   - For http endpoints: only loopback addresses (127.0.0.1, ::1, localhost)
+//     are permitted. This allows local test/mock servers while blocking
+//     plaintext credential transmission to any real remote host.
+func validateAPIEndpoint(rawURL string) error {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("api_endpoint is not a valid URL: %w", err)
+	}
+	switch parsed.Scheme {
+	case "https", "http":
+		// handled below
+	default:
+		return fmt.Errorf("api_endpoint must use https (got %q)", parsed.Scheme)
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("api_endpoint must include a hostname")
+	}
+
+	// Check bare IP literal addresses.
+	if ip := net.ParseIP(hostname); ip != nil {
+		if parsed.Scheme == "http" {
+			// http is only permitted for loopback (test/mock servers).
+			if !ip.IsLoopback() {
+				return fmt.Errorf("api_endpoint with http scheme is only allowed for loopback addresses (127.0.0.1, ::1)")
+			}
+			return nil
+		}
+		// https: reject private/link-local/multicast to prevent SSRF.
+		if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("api_endpoint must not target a private or link-local IP address")
+		}
+		return nil
+	}
+
+	// Hostname (not a bare IP).
+	if parsed.Scheme == "http" {
+		// Permit only the canonical loopback hostname.
+		if hostname != "localhost" {
+			return fmt.Errorf("api_endpoint with http scheme is only allowed for loopback addresses (use localhost or 127.0.0.1)")
+		}
+	}
+	return nil
+}
+
 // SetConfig updates the client configuration
 func (c *Client) SetConfig(config *Config) error {
 	if config.AdminAPIKey == "" {
@@ -151,6 +204,9 @@ func (c *Client) SetConfig(config *Config) error {
 	c.organizationID = config.OrganizationID
 
 	if config.APIEndpoint != "" {
+		if err := validateAPIEndpoint(config.APIEndpoint); err != nil {
+			return err
+		}
 		c.apiEndpoint = config.APIEndpoint
 	}
 
@@ -193,7 +249,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		}
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Limit response body to 1 MiB to prevent memory exhaustion from
+	// oversized or malicious responses.
+	const maxResponseBytes = 1 << 20 // 1 MiB
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
@@ -234,13 +293,18 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, fmt.Errorf("%s", errMsg)
 		}
 
-		// Fallback for non-standard error format
-		c.logger.Error("OpenAI API non-standard error",
+		// Fallback for non-standard error format — log truncated body at
+		// debug level only to avoid leaking sensitive API data into logs.
+		truncated := string(respBody)
+		if len(truncated) > 200 {
+			truncated = truncated[:200] + "...[truncated]"
+		}
+		c.logger.Debug("OpenAI API non-standard error",
 			"status", resp.StatusCode,
-			"body", string(respBody),
+			"body_preview", truncated,
 			"method", method,
 			"path", path)
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("API error (%d) from OpenAI", resp.StatusCode)
 	}
 
 	return respBody, nil

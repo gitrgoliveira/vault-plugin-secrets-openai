@@ -52,10 +52,9 @@ func Backend(client ClientAPI) *backend {
 	}
 
 	b := &backend{
-		client:       client,
-		roleLocks:    locksutil.CreateLocks(),
-		managedUsers: make(map[string]struct{}),
-		logger:       logger,
+		client:    client,
+		roleLocks: locksutil.CreateLocks(),
+		logger:    logger,
 	}
 
 	b.Backend = &framework.Backend{
@@ -119,7 +118,9 @@ func (b *backend) initialize(ctx context.Context, initRequest *logical.Initializ
 		if err != nil {
 			return err
 		}
+		b.Lock()
 		b.client = client
+		b.Unlock()
 	}
 
 	return nil
@@ -143,10 +144,6 @@ type backend struct {
 	// concurrent requests are not modifying the same role and possibly causing
 	// issues with the priority queue.
 	roleLocks []*locksutil.LockEntry
-
-	// managedUsers contains the set of OpenAI service accounts managed by the secrets engine
-	// This is used to ensure that service accounts are not duplicated.
-	managedUsers map[string]struct{}
 	storageView  logical.Storage
 }
 

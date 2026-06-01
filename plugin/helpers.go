@@ -59,15 +59,29 @@ func (b *backend) configureClientFromStorage(ctx context.Context, storage logica
 	return client, nil
 }
 
-// ensureClientConfigured ensures the backend has a configured client
-// This is used in multiple places to lazy-load the client when needed
+// ensureClientConfigured ensures the backend has a configured client.
+// It uses a double-check pattern under the write lock so that only one
+// goroutine initialises the client when it is nil.
 func (b *backend) ensureClientConfigured(ctx context.Context, storage logical.Storage) error {
-	if b.client == nil {
-		client, err := b.configureClientFromStorage(ctx, storage)
-		if err != nil {
-			return err
-		}
-		b.client = client
+	// Fast path: client already set (read lock).
+	b.RLock()
+	hasClient := b.client != nil
+	b.RUnlock()
+	if hasClient {
+		return nil
 	}
+
+	// Slow path: acquire write lock and initialise.
+	b.Lock()
+	defer b.Unlock()
+	// Re-check after acquiring the write lock.
+	if b.client != nil {
+		return nil
+	}
+	client, err := b.configureClientFromStorage(ctx, storage)
+	if err != nil {
+		return err
+	}
+	b.client = client
 	return nil
 }

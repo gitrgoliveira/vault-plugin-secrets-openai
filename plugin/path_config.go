@@ -268,17 +268,34 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		return nil, wrappedError
 	}
 
-	// Update backend client
+	// Update backend client under the write lock.
+	b.Lock()
 	b.client = client
+	b.Unlock()
 
 	return nil, nil
 }
 
 // pathConfigDelete deletes the configuration
 func (b *backend) pathConfigDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	// Deregister any automated rotation job before removing the config so that
+	// Vault's rotation manager does not fire against a missing configuration.
+	config, _ := getConfig(ctx, req.Storage)
+	if config != nil && config.ShouldDeregisterRotationJob() {
+		deregisterReq := &rotation.RotationJobDeregisterRequest{
+			MountPoint: req.MountPoint,
+			ReqPath:    req.Path,
+		}
+		if err := b.System().DeregisterRotationJob(ctx, deregisterReq); err != nil {
+			b.Logger().Warn("failed to deregister rotation job during config delete", "error", err)
+		}
+	}
+
 	err := req.Storage.Delete(ctx, configPath)
 	if err == nil {
+		b.Lock()
 		b.client = nil
+		b.Unlock()
 	}
 	return nil, err
 }
@@ -315,7 +332,10 @@ func (b *backend) validateProject(ctx context.Context, s logical.Storage, projec
 	}
 
 	// Validate project with OpenAI API
-	projectInfo, err := b.client.GetProject(ctx, projectID)
+	b.RLock()
+	client := b.client
+	b.RUnlock()
+	projectInfo, err := client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI project validation failed: %w", err)
 	}
