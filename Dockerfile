@@ -24,6 +24,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
 # Final stage
 # FROM gcr.io/distroless/static-debian12 # also works.
 FROM alpine:3.24
+
+# OpenAI API calls require trusted root CAs for outbound TLS.
+RUN apk add --no-cache ca-certificates
+
 LABEL org.opencontainers.image.title="vault-plugin-secrets-openai"
 LABEL org.opencontainers.image.description="HashiCorp Vault OpenAI Dynamic Secrets Plugin"
 LABEL org.opencontainers.image.authors="Ricardo Oliveira"
