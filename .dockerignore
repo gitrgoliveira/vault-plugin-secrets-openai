@@ -1,0 +1,17 @@
+# VCS and CI
+.git
+.github
+
+# Build outputs / local binaries (image builds the binary itself)
+bin
+coverage.out
+coverage.html
+
+# Container / VM tooling not needed for the Go build
+Dockerfile
+.dockerignore
+Vagrantfile
+
+# Docs
+*.md
+LICENSE
