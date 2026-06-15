@@ -46,10 +46,11 @@ func (b *backend) configureClientFromStorage(ctx context.Context, storage logica
 
 	client := NewClient(config.AdminAPIKey, b.Logger())
 	clientConfig := &Config{
-		AdminAPIKey:    config.AdminAPIKey,
-		AdminAPIKeyID:  config.AdminAPIKeyID,
-		APIEndpoint:    config.APIEndpoint,
-		OrganizationID: config.OrganizationID,
+		AdminAPIKey:          config.AdminAPIKey,
+		AdminAPIKeyID:        config.AdminAPIKeyID,
+		APIEndpoint:          config.APIEndpoint,
+		OrganizationID:       config.OrganizationID,
+		AllowPrivateEndpoint: config.AllowPrivateEndpoint,
 	}
 
 	if err := client.SetConfig(clientConfig); err != nil {
@@ -59,15 +60,28 @@ func (b *backend) configureClientFromStorage(ctx context.Context, storage logica
 	return client, nil
 }
 
-// ensureClientConfigured ensures the backend has a configured client
-// This is used in multiple places to lazy-load the client when needed
+// ensureClientConfigured ensures the backend has a configured client.
+// It uses double-checked locking so only one goroutine initializes the client
+// when it is nil, while concurrent callers read it safely.
 func (b *backend) ensureClientConfigured(ctx context.Context, storage logical.Storage) error {
-	if b.client == nil {
-		client, err := b.configureClientFromStorage(ctx, storage)
-		if err != nil {
-			return err
-		}
-		b.client = client
+	// Fast path: client already set.
+	b.RLock()
+	hasClient := b.client != nil
+	b.RUnlock()
+	if hasClient {
+		return nil
 	}
+
+	// Slow path: acquire the write lock and re-check before initializing.
+	b.Lock()
+	defer b.Unlock()
+	if b.client != nil {
+		return nil
+	}
+	client, err := b.configureClientFromStorage(ctx, storage)
+	if err != nil {
+		return err
+	}
+	b.client = client
 	return nil
 }

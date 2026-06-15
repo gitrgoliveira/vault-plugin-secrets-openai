@@ -21,11 +21,12 @@ const (
 // openaiConfig contains the configuration for the OpenAI secrets engine
 // Only supports the current OpenAI API model and automated rotation.
 type openaiConfig struct {
-	AdminAPIKey     string    `json:"admin_api_key"`
-	AdminAPIKeyID   string    `json:"admin_api_key_id"`
-	APIEndpoint     string    `json:"api_endpoint"`
-	OrganizationID  string    `json:"organization_id"`
-	LastRotatedTime time.Time `json:"last_rotated_time"`
+	AdminAPIKey          string    `json:"admin_api_key"`
+	AdminAPIKeyID        string    `json:"admin_api_key_id"`
+	APIEndpoint          string    `json:"api_endpoint"`
+	OrganizationID       string    `json:"organization_id"`
+	AllowPrivateEndpoint bool      `json:"allow_private_endpoint"`
+	LastRotatedTime      time.Time `json:"last_rotated_time"`
 
 	// Automated rotation configuration
 	automatedrotationutil.AutomatedRotationParams
@@ -79,6 +80,11 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 						Description: "URL to the OpenAI API. Defaults to https://api.openai.com/v1",
 						Default:     DefaultAPIEndpoint,
 					},
+					"allow_private_endpoint": {
+						Type:        framework.TypeBool,
+						Description: "Allow api_endpoint to target a private or link-local address. Defaults to false. Enable only when pointing the plugin at a trusted internal OpenAI-compatible proxy.",
+						Default:     false,
+					},
 				}
 				// Add the automated rotation fields
 				automatedrotationutil.AddAutomatedRotationFields(fields)
@@ -127,9 +133,10 @@ func (b *backend) pathConfigRead(ctx context.Context, req *logical.Request, data
 	}
 
 	respData := map[string]interface{}{
-		"api_endpoint":     config.APIEndpoint,
-		"organization_id":  config.OrganizationID,
-		"admin_api_key_id": config.AdminAPIKeyID,
+		"api_endpoint":           config.APIEndpoint,
+		"organization_id":        config.OrganizationID,
+		"admin_api_key_id":       config.AdminAPIKeyID,
+		"allow_private_endpoint": config.AllowPrivateEndpoint,
 	}
 
 	// Add automated rotation parameters to the response
@@ -195,6 +202,10 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		config.APIEndpoint = DefaultAPIEndpoint
 	}
 
+	if allowPrivate, ok := data.GetOk("allow_private_endpoint"); ok {
+		config.AllowPrivateEndpoint = allowPrivate.(bool)
+	}
+
 	// Parse automated rotation parameters
 	if err := config.ParseAutomatedRotationFields(data); err != nil {
 		return logical.ErrorResponse("error parsing automated rotation fields: %s", err), nil
@@ -208,10 +219,11 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	// Create a test client to validate the configuration
 	client := NewClient(config.AdminAPIKey, b.Logger())
 	clientConfig := &Config{
-		AdminAPIKey:    config.AdminAPIKey,
-		AdminAPIKeyID:  config.AdminAPIKeyID,
-		APIEndpoint:    config.APIEndpoint,
-		OrganizationID: config.OrganizationID,
+		AdminAPIKey:          config.AdminAPIKey,
+		AdminAPIKeyID:        config.AdminAPIKeyID,
+		APIEndpoint:          config.APIEndpoint,
+		OrganizationID:       config.OrganizationID,
+		AllowPrivateEndpoint: config.AllowPrivateEndpoint,
 	}
 
 	if err := client.SetConfig(clientConfig); err != nil {
@@ -267,19 +279,40 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		return nil, wrappedError
 	}
 
-	// Update backend client
+	// Update backend client under the write lock.
+	b.Lock()
 	b.client = client
+	b.Unlock()
 
 	return nil, nil
 }
 
 // pathConfigDelete deletes the configuration
 func (b *backend) pathConfigDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	err := req.Storage.Delete(ctx, configPath)
-	if err == nil {
-		b.client = nil
+	// Deregister any active rotation job before removing the config so Vault's
+	// rotation manager does not keep firing against a missing configuration.
+	config, err := getConfig(ctx, req.Storage)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	if config != nil && config.ShouldRegisterRotationJob() {
+		deregisterReq := &rotation.RotationJobDeregisterRequest{
+			MountPoint: req.MountPoint,
+			ReqPath:    req.Path,
+		}
+		b.Logger().Debug("Deregistering rotation job during config delete", "mount", req.MountPoint+req.Path)
+		if err := b.System().DeregisterRotationJob(ctx, deregisterReq); err != nil {
+			b.Logger().Warn("failed to deregister rotation job during config delete", "error", err)
+		}
+	}
+
+	if err := req.Storage.Delete(ctx, configPath); err != nil {
+		return nil, err
+	}
+	b.Lock()
+	b.client = nil
+	b.Unlock()
+	return nil, nil
 }
 
 // getConfig returns the configuration for this backend
@@ -314,7 +347,10 @@ func (b *backend) validateProject(ctx context.Context, s logical.Storage, projec
 	}
 
 	// Validate project with OpenAI API
-	projectInfo, err := b.client.GetProject(ctx, projectID)
+	b.RLock()
+	client := b.client
+	b.RUnlock()
+	projectInfo, err := client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI project validation failed: %w", err)
 	}

@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -28,32 +31,137 @@ const (
 
 // Client represents an OpenAI API client
 type Client struct {
-	httpClient     *http.Client
-	apiEndpoint    string
-	adminAPIKey    string
-	adminAPIKeyID  string
-	organizationID string
-	logger         hclog.Logger
+	httpClient           *http.Client
+	apiEndpoint          string
+	adminAPIKey          string
+	adminAPIKeyID        string
+	organizationID       string
+	allowPrivateEndpoint bool
+	logger               hclog.Logger
 }
 
 // NewClient creates a new OpenAI client
 func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
-	return &Client{
-		httpClient:     &http.Client{Timeout: 30 * time.Second},
+	c := &Client{
 		apiEndpoint:    DefaultAPIEndpoint,
 		adminAPIKey:    adminAPIKey,
 		organizationID: "", // Will be set through SetConfig
 		logger:         logger,
 	}
+	c.httpClient = &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: c.guardedTransport(),
+	}
+	return c
+}
+
+// guardedTransport returns an http.Transport whose dialer rejects connections
+// to private or link-local IP addresses at dial time. The check runs after DNS
+// resolution against the resolved address, which closes the gap that hostname
+// validation alone leaves open (a hostname that resolves to an internal IP).
+// Loopback is always allowed for local test/mock servers, and operators can opt
+// in to private endpoints by setting allow_private_endpoint.
+func (c *Client) guardedTransport() *http.Transport {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control: func(_, address string, _ syscall.RawConn) error {
+			return c.checkDialAddress(address)
+		},
+	}
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+// checkDialAddress rejects a resolved dial address that targets a private or
+// link-local IP, unless it is loopback or private endpoints are explicitly
+// allowed.
+func (c *Client) checkDialAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.IsLoopback() {
+		return nil
+	}
+	if c.allowPrivateEndpoint {
+		return nil
+	}
+	if isBlockedIP(ip) {
+		return fmt.Errorf("connection to private or link-local address %s is not allowed", ip)
+	}
+	return nil
+}
+
+// isBlockedIP reports whether an IP is in a range that should not be reachable
+// from the plugin by default (RFC1918 private, link-local, or unspecified).
+func isBlockedIP(ip net.IP) bool {
+	return ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified()
+}
+
+// validateAPIEndpoint checks that the supplied endpoint URL is safe to use.
+//
+// Rules:
+//   - Must be a valid URL with a non-empty hostname.
+//   - http is permitted only for loopback (127.0.0.1, ::1, localhost) so local
+//     test/mock servers work while plaintext credential transmission to remote
+//     hosts is blocked.
+//   - IP-literal endpoints in private or link-local ranges are rejected to
+//     prevent Server-Side Request Forgery (SSRF), unless allowPrivate is set.
+//
+// Hostname endpoints that resolve to private ranges are caught at dial time by
+// checkDialAddress; this function provides fast feedback at config-write time.
+func validateAPIEndpoint(rawURL string, allowPrivate bool) error {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("api_endpoint is not a valid URL: %w", err)
+	}
+	switch parsed.Scheme {
+	case "https", "http":
+		// handled below
+	default:
+		return fmt.Errorf("api_endpoint must use https (got %q)", parsed.Scheme)
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("api_endpoint must include a hostname")
+	}
+
+	if ip := net.ParseIP(hostname); ip != nil {
+		if parsed.Scheme == "http" && !ip.IsLoopback() {
+			return fmt.Errorf("api_endpoint with http scheme is only allowed for loopback addresses (127.0.0.1, ::1)")
+		}
+		if !ip.IsLoopback() && !allowPrivate && isBlockedIP(ip) {
+			return fmt.Errorf("api_endpoint must not target a private or link-local IP address; set allow_private_endpoint=true to override")
+		}
+		return nil
+	}
+
+	if parsed.Scheme == "http" && hostname != "localhost" {
+		return fmt.Errorf("api_endpoint with http scheme is only allowed for loopback addresses (use localhost or 127.0.0.1)")
+	}
+	return nil
 }
 
 // Config contains configuration for the OpenAI client
 // Add AdminAPIKeyID to track the key's ID for revocation
 type Config struct {
-	AdminAPIKey    string `json:"admin_api_key"`
-	AdminAPIKeyID  string `json:"admin_api_key_id,omitempty"`
-	APIEndpoint    string `json:"api_endpoint"`
-	OrganizationID string `json:"organization_id"`
+	AdminAPIKey          string `json:"admin_api_key"`
+	AdminAPIKeyID        string `json:"admin_api_key_id,omitempty"`
+	APIEndpoint          string `json:"api_endpoint"`
+	OrganizationID       string `json:"organization_id"`
+	AllowPrivateEndpoint bool   `json:"allow_private_endpoint,omitempty"`
 }
 
 // ServiceAccount represents an OpenAI project service account
@@ -148,8 +256,12 @@ func (c *Client) SetConfig(config *Config) error {
 	c.adminAPIKey = config.AdminAPIKey
 	c.adminAPIKeyID = config.AdminAPIKeyID
 	c.organizationID = config.OrganizationID
+	c.allowPrivateEndpoint = config.AllowPrivateEndpoint
 
 	if config.APIEndpoint != "" {
+		if err := validateAPIEndpoint(config.APIEndpoint, config.AllowPrivateEndpoint); err != nil {
+			return err
+		}
 		c.apiEndpoint = config.APIEndpoint
 	}
 
@@ -192,7 +304,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		}
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Limit the response body to 1 MiB to prevent memory exhaustion from
+	// oversized or malicious responses.
+	const maxResponseBytes = 1 << 20 // 1 MiB
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
@@ -233,13 +348,19 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, fmt.Errorf("%s", errMsg)
 		}
 
-		// Fallback for non-standard error format
-		c.logger.Error("OpenAI API non-standard error",
+		// Fallback for non-standard error format. Log a truncated body at debug
+		// level to avoid leaking organization IDs or account metadata into logs
+		// and the audit trail, and keep the raw body out of the returned error.
+		preview := string(respBody)
+		if len(preview) > 200 {
+			preview = preview[:200] + "...[truncated]"
+		}
+		c.logger.Debug("OpenAI API non-standard error",
 			"status", resp.StatusCode,
-			"body", string(respBody),
+			"body_preview", preview,
 			"method", method,
 			"path", path)
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("API error (%d) from OpenAI", resp.StatusCode)
 	}
 
 	return respBody, nil

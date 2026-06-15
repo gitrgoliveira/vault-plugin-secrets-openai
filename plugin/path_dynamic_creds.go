@@ -189,7 +189,11 @@ func (b *backend) pathRoleWrite(ctx context.Context, req *logical.Request, data 
 	role.ProjectID = projectID
 
 	if serviceAccountNameTemplate, ok := data.GetOk("service_account_name_template"); ok {
-		role.ServiceAccountNameTemplate = serviceAccountNameTemplate.(string)
+		tmplStr := serviceAccountNameTemplate.(string)
+		if err := validateNameTemplate(tmplStr); err != nil {
+			return logical.ErrorResponse(err.Error()), nil
+		}
+		role.ServiceAccountNameTemplate = tmplStr
 	} else if role.ServiceAccountNameTemplate == "" {
 		role.ServiceAccountNameTemplate = "vault-{{.RoleName}}-{{.RandomSuffix}}"
 	}
@@ -346,26 +350,20 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 		}
 	}
 
-	// Calculate expiry time
-	expiresAt := time.Now().Add(ttl)
-
 	// Create service account (which automatically creates an API key in OpenAI API)
 	b.Logger().Debug("Creating service account with API key", "name", svcAccountName, "project", projectInfo.ID)
-	svcAccount, apiKey, err := b.client.CreateServiceAccount(ctx, projectInfo.ID, CreateServiceAccountRequest{
+	b.RLock()
+	client := b.client
+	b.RUnlock()
+	svcAccount, apiKey, err := client.CreateServiceAccount(ctx, projectInfo.ID, CreateServiceAccountRequest{
 		Name: svcAccountName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating service account: %w", err)
 	}
 
-	// Note: In OpenAI API, we can't control the TTL of API keys created with service accounts
-	// We'll track the TTL in Vault's system for credential revocation
-
-	// Store service account info for cleanup
-	if err := b.storeServiceAccountInfo(ctx, req.Storage, apiKey.ID, svcAccount.ID, expiresAt); err != nil {
-		b.Logger().Error("failed to store service account mapping", "error", err)
-		// Continue anyway, as the credentials are still valid
-	}
+	// Note: In OpenAI API we cannot control the TTL of API keys created with
+	// service accounts; Vault's lease TTL is used for revocation scheduling.
 
 	// Generate the response
 	resp := b.Secret(dynamicSecretCredsType).Response(map[string]interface{}{
@@ -384,34 +382,6 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 	resp.Secret.MaxTTL = role.MaxTTL
 
 	return resp, nil
-}
-
-// apiKeyMapping stores the relationship between API keys and service accounts
-type apiKeyMapping struct {
-	APIKeyID         string    `json:"api_key_id"`
-	ServiceAccountID string    `json:"service_account_id"`
-	ExpiresAt        time.Time `json:"expires_at"`
-}
-
-// storeServiceAccountInfo stores the mapping between an API key and its service account
-func (b *backend) storeServiceAccountInfo(ctx context.Context, s logical.Storage, apiKeyID, serviceAccountID string, expiresAt time.Time) error {
-	mapping := apiKeyMapping{
-		APIKeyID:         apiKeyID,
-		ServiceAccountID: serviceAccountID,
-		ExpiresAt:        expiresAt,
-	}
-
-	entry, err := logical.StorageEntryJSON(apiKeyMappingPath(apiKeyID), mapping)
-	if err != nil {
-		return err
-	}
-
-	return s.Put(ctx, entry)
-}
-
-// apiKeyMappingPath returns the storage path for an API key mapping
-func apiKeyMappingPath(apiKeyID string) string {
-	return fmt.Sprintf("api_keys/%s", apiKeyID)
 }
 
 // Secret structure that represents a dynamically generated API key
@@ -443,9 +413,18 @@ func dynamicSecretCreds(b *backend) *framework.Secret {
 
 // dynamicCredsRevoke revokes the API key and deletes the service account
 func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	apiKeyID := req.Secret.InternalData["api_key_id"].(string)
-	serviceAccountID := req.Secret.InternalData["service_account_id"].(string)
-	projectID := req.Secret.InternalData["project_id"].(string)
+	apiKeyID, ok := req.Secret.InternalData["api_key_id"].(string)
+	if !ok || apiKeyID == "" {
+		return nil, fmt.Errorf("internal error: api_key_id missing or not a string in lease internal data")
+	}
+	serviceAccountID, ok := req.Secret.InternalData["service_account_id"].(string)
+	if !ok || serviceAccountID == "" {
+		return nil, fmt.Errorf("internal error: service_account_id missing or not a string in lease internal data")
+	}
+	projectID, ok := req.Secret.InternalData["project_id"].(string)
+	if !ok || projectID == "" {
+		return nil, fmt.Errorf("internal error: project_id missing or not a string in lease internal data")
+	}
 
 	b.Logger().Debug("revoking API key for service Account", "service_account_id", serviceAccountID)
 
@@ -455,14 +434,11 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 	}
 
 	// Delete the service account
-	if err := b.client.DeleteServiceAccount(ctx, serviceAccountID, projectID); err != nil {
+	b.RLock()
+	client := b.client
+	b.RUnlock()
+	if err := client.DeleteServiceAccount(ctx, serviceAccountID, projectID); err != nil {
 		return nil, fmt.Errorf("error deleting service account: %w", err)
-	}
-
-	// Delete the API key mapping
-	if err := req.Storage.Delete(ctx, apiKeyMappingPath(apiKeyID)); err != nil {
-		b.Logger().Error("error deleting API key from storage for service account ID", "service_account_id", serviceAccountID, "error", err)
-		// This is not a fatal error, so continue
 	}
 
 	return nil, nil
@@ -470,7 +446,7 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 
 // Helper functions
 
-// formatName formats a name template with the provided data
+// formatName formats a name template with the provided data.
 func formatName(templateStr string, data map[string]interface{}) (string, error) {
 	tmpl, err := template.New("name").Parse(templateStr)
 	if err != nil {
@@ -485,19 +461,57 @@ func formatName(templateStr string, data map[string]interface{}) (string, error)
 	return buf.String(), nil
 }
 
-// generateRandomString generates a random string of the specified length
+// validateNameTemplate checks that a service-account name template parses,
+// renders with placeholder values, and produces a valid name after
+// sanitization. It runs at role-write time so a broken template is rejected
+// before it can fail at credential-issue time.
+func validateNameTemplate(templateStr string) error {
+	if templateStr == "" {
+		return fmt.Errorf("service_account_name_template must not be empty")
+	}
+	placeholder := map[string]interface{}{
+		"RoleName":     "testrole",
+		"RandomSuffix": "abcdefgh",
+		"ProjectName":  "testproject",
+	}
+	result, err := formatName(templateStr, placeholder)
+	if err != nil {
+		return fmt.Errorf("service_account_name_template is invalid: %w", err)
+	}
+	result = SanitizeServiceAccountName(result)
+	if err := ValidateServiceAccountName(result); err != nil {
+		return fmt.Errorf("service_account_name_template produces an invalid name %q: %w", result, err)
+	}
+	return nil
+}
+
+// generateRandomString generates a cryptographically random string of the
+// specified length. It uses rejection sampling to avoid the modular bias a
+// simple b%len(charset) would introduce when len(charset) does not evenly
+// divide 256.
 func generateRandomString(length int) (string, error) {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	const charsetLen = len(charset) // 36
+	// Largest multiple of charsetLen that fits in a byte; bytes at or above this
+	// threshold are discarded to keep the distribution uniform.
+	threshold := 256 - (256 % charsetLen) // 252
+
 	result := make([]byte, length)
-
-	randomBytes := make([]byte, length)
-	_, err := rand.Read(randomBytes)
-	if err != nil {
-		return "", fmt.Errorf("error generating random bytes: %w", err)
-	}
-
-	for i, b := range randomBytes {
-		result[i] = charset[int(b)%len(charset)]
+	buf := make([]byte, length*2) // over-allocate to reduce rand.Read calls
+	written := 0
+	for written < length {
+		if _, err := rand.Read(buf); err != nil {
+			return "", fmt.Errorf("error generating random bytes: %w", err)
+		}
+		for _, b := range buf {
+			if written == length {
+				break
+			}
+			if int(b) < threshold {
+				result[written] = charset[int(b)%charsetLen]
+				written++
+			}
+		}
 	}
 
 	return string(result), nil

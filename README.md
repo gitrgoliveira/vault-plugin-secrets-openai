@@ -117,6 +117,7 @@ Configure the OpenAI secrets engine with admin API credentials.
 - `admin_api_key_id` (string, required) - Admin API key ID for OpenAI  
 - `organization_id` (string, required) - Organization ID for OpenAI
 - `api_endpoint` (string, optional) - URL for the OpenAI API (default: `https://api.openai.com/v1`)
+- `allow_private_endpoint` (bool, optional) - Allow `api_endpoint` to target a private or link-local address (default: `false`). Enable only when pointing the plugin at a trusted internal OpenAI-compatible proxy.
 - `rotation_period` (duration, optional) - Period between automatic admin API key rotations
 - `rotation_window` (duration, optional) - Window during which rotation can occur
 - `disable_automated_rotation` (bool, optional) - Disable automated rotation of admin credentials
@@ -140,6 +141,7 @@ Read the current configuration. Sensitive fields are not returned.
 - `api_endpoint` - The configured API endpoint
 - `organization_id` - The organization ID
 - `admin_api_key_id` - The admin API key ID
+- `allow_private_endpoint` - Whether private/link-local endpoints are permitted
 - `rotation_period` - Automatic rotation period (if enabled)
 - `rotation_window` - Rotation window (if enabled)
 - `last_rotated` - Last rotation timestamp (if automated rotation is enabled)
