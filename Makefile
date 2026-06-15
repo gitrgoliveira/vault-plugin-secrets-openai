@@ -87,7 +87,7 @@ build-release-verbose: ## Build release binary with verbose output
 build-cross: ## Build for multiple platforms
 	@echo "$(COLOR_GREEN)Building for multiple platforms...$(COLOR_RESET)"
 	@mkdir -p $(BUILD_DIR)
-	@for platform in linux/amd64 darwin/amd64 darwin/arm64 windows/amd64; do \
+	@for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do \
 		os=$$(echo $$platform | cut -d/ -f1); \
 		arch=$$(echo $$platform | cut -d/ -f2); \
 		output=$(BUILD_DIR)/$(PLUGIN_NAME)-$$os-$$arch; \
