@@ -15,6 +15,13 @@ import (
 // Core Rotation Implementation
 //------------------------------------------------------------------------------
 
+// pendingRevocationPath returns the storage path used to record an admin key ID
+// that could not be revoked during rotation, keyed per ID so concurrent or
+// consecutive failures do not overwrite each other.
+func pendingRevocationPath(keyID string) string {
+	return fmt.Sprintf("rotation/pending_revocation/%s", keyID)
+}
+
 // rotateAdminAPIKey rotates the admin API key
 func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage) (bool, error) {
 	// Get the existing configuration
@@ -126,16 +133,17 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 
 	// Revoke the previous key now that the new one is confirmed and persisted.
 	// If revocation fails, the new key is already in storage, so record the
-	// stale key ID under a dedicated storage key. This lets an operator find
-	// and manually revoke it, and prevents the next rotation from treating the
-	// new key ID as the one to revoke.
+	// stale key ID under a per-ID storage path. This lets an operator find and
+	// manually revoke it, and prevents the next rotation from treating the new
+	// key ID as the one to revoke. A per-ID path ensures that a second
+	// consecutive failure does not overwrite a previously recorded stale key.
 	if oldAdminKeyID != "" {
 		b.Logger().Debug("Cleaning up previous admin API key")
 		if err := newClient.RevokeAdminAPIKey(ctx, oldAdminKeyID); err != nil {
 			b.Logger().Error("Failed to revoke previous admin key - the key may still be active in OpenAI",
 				"old_key_id", oldAdminKeyID, "error", err)
 			if putErr := storage.Put(ctx, &logical.StorageEntry{
-				Key:   "rotation/pending_revocation",
+				Key:   pendingRevocationPath(oldAdminKeyID),
 				Value: []byte(oldAdminKeyID),
 			}); putErr != nil {
 				b.Logger().Error("Failed to record stale admin key for manual cleanup",

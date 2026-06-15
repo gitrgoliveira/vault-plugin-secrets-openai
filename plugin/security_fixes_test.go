@@ -8,6 +8,7 @@ package openaisecrets
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -387,4 +388,68 @@ func TestConfigDelete_DeregistersRotationJob(t *testing.T) {
 	_, err = b.pathConfigDelete(ctx, req, nil)
 	require.NoError(t, err)
 	assert.True(t, sv.deregisterCalled, "expected rotation job to be deregistered on config delete")
+}
+
+// ---------------------------------------------------------------------------
+// Item 4: failed revocation records each stale key under a per-ID path
+// ---------------------------------------------------------------------------
+
+// TestRotation_PendingRevocationPerKey verifies that when admin key revocation
+// fails, the stale key ID is recorded under a per-ID storage path, and that two
+// consecutive failures retain two distinct records rather than overwriting.
+func TestRotation_PendingRevocationPerKey(t *testing.T) {
+	var keyCounter int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/admin_api_keys"):
+			keyCounter++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf(
+				`{"object":"admin_api_key","id":"new-key-%d","name":"n","value":"sk-new-%d","created_at":1}`,
+				keyCounter, keyCounter)))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/admin_api_keys"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case r.Method == http.MethodDelete:
+			// Simulate revocation failure.
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	b := getTestBackend(t)
+	ctx := context.Background()
+	storage := &logical.InmemStorage{}
+
+	config := &openaiConfig{
+		AdminAPIKey:    "old-secret",
+		AdminAPIKeyID:  "old-key-1",
+		OrganizationID: "org-123",
+		APIEndpoint:    server.URL + "/v1",
+	}
+	entry, err := logical.StorageEntryJSON(configPath, config)
+	require.NoError(t, err)
+	require.NoError(t, storage.Put(ctx, entry))
+
+	// First rotation: revocation of "old-key-1" fails.
+	_, err = b.rotateAdminAPIKey(ctx, storage)
+	require.Error(t, err)
+	first, err := storage.Get(ctx, pendingRevocationPath("old-key-1"))
+	require.NoError(t, err)
+	require.NotNil(t, first, "first stale key should be recorded")
+	assert.Equal(t, "old-key-1", string(first.Value))
+
+	// Config now holds "new-key-1". Second rotation: revocation of it also fails.
+	_, err = b.rotateAdminAPIKey(ctx, storage)
+	require.Error(t, err)
+	second, err := storage.Get(ctx, pendingRevocationPath("new-key-1"))
+	require.NoError(t, err)
+	require.NotNil(t, second, "second stale key should be recorded under its own path")
+
+	// The first record must survive the second failure.
+	stillThere, err := storage.Get(ctx, pendingRevocationPath("old-key-1"))
+	require.NoError(t, err)
+	require.NotNil(t, stillThere, "first stale key must not be overwritten by the second failure")
 }

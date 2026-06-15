@@ -58,9 +58,16 @@ func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
 // guardedTransport returns an http.Transport whose dialer rejects connections
 // to private or link-local IP addresses at dial time. The check runs after DNS
 // resolution against the resolved address, which closes the gap that hostname
-// validation alone leaves open (a hostname that resolves to an internal IP).
-// Loopback is always allowed for local test/mock servers, and operators can opt
-// in to private endpoints by setting allow_private_endpoint.
+// validation alone leaves open (a hostname that resolves to an internal IP) for
+// direct connections.
+//
+// Limitation: when an outbound proxy is configured via HTTP(S)_PROXY, the
+// dialer connects to the proxy and (for https) tunnels via CONNECT, so the
+// destination IP is resolved by the proxy and is not seen by checkDialAddress.
+// In that deployment the resolved-address guard cannot inspect the real target.
+// Config-write is a privileged operation, so this residual gap is accepted as
+// defense-in-depth rather than a complete control; loopback is always allowed
+// and operators can opt in to private endpoints with allow_private_endpoint.
 func (c *Client) guardedTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
