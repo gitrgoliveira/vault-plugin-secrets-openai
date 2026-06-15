@@ -258,6 +258,10 @@ This plugin emits Prometheus-compatible metrics through Vault's telemetry system
 - Vault 1.19+ for containerized plugin support
 - Vagrant (for containerized plugin usage)
 
+For official HashiCorp guidance, see the Vault documentation on the developer portal:
+- [Vault Plugins Overview](https://developer.hashicorp.com/vault/docs/plugins)
+- [Plugin Development](https://developer.hashicorp.com/vault/docs/plugins/plugin-development)
+
 ---
 
 ## Usage with Docker
