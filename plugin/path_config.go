@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	configPath     = "config"
-	rotationPrefix = "admin-key" // Used with rotation manager
+	configPath = "config"
 )
 
 // openaiConfig contains the configuration for the OpenAI secrets engine

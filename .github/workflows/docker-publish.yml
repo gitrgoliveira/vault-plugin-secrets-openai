@@ -17,12 +17,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.x'
-          cache: true
-
       - name: Set version
         id: version
         run: |
@@ -31,14 +25,23 @@ jobs:
           else
             VERSION=dev-$(git rev-parse --short HEAD)
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Vault requires the self-reported plugin version to be valid semver
+          # with a leading 'v'. This pattern matches plugin.validateReportedVersion
+          # and release.yml (optional pre-release and build metadata). Only
+          # reported_version is consumed downstream (as the REPORTED_VERSION
+          # build arg); the image's own tags come from docker/metadata-action.
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "reported_version=$VERSION" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # A release tag that isn't valid semver would publish an image that
+            # self-reports as unversioned; fail loudly instead, mirroring release.yml.
+            echo "::error::Invalid release tag '$VERSION'. Must be valid semver with a leading 'v', e.g. v0.1.0."
+            exit 1
+          else
+            # Non-tag builds (branch/dispatch) are intentionally unversioned.
+            echo "reported_version=" >> $GITHUB_OUTPUT
+          fi
           echo "Version: $VERSION"
-          
-      - name: Build release binary
-        run: make build-release
-        env:
-          VERSION: ${{ env.VERSION }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -69,9 +72,16 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
+          # Keep the manifest list clean (amd64 + arm64 only). Disabling the
+          # default provenance attestation avoids an extra "unknown/unknown"
+          # entry in the image index
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            REPORTED_VERSION=${{ steps.version.outputs.reported_version }}
 
       - name: Logout from GHCR
         run: docker logout ghcr.io

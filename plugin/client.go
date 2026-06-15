@@ -24,7 +24,6 @@ const (
 	adminAPIKeysEndpoint       = organizationPrefix + "/admin_api_keys"
 	projectsEndpoint           = organizationPrefix + "/projects"
 	serviceAccountsEndpointFmt = organizationPrefix + "/projects/%s/service_accounts"
-	apiKeysEndpoint            = organizationPrefix + "/api_keys"
 )
 
 // Client represents an OpenAI API client

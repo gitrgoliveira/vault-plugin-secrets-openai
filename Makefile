@@ -18,8 +18,14 @@ ifeq ($(GOOS), darwin)
 	HASH_CMD = shasum -a 256
 endif
 
+# Reported plugin version. Must be a valid semver with a leading 'v' (e.g.
+# v0.8.0) or empty. Vault rejects a non-empty, invalid value at registration,
+# so it defaults to empty (unversioned) for local/dev builds. Override for a
+# real build, e.g. `make build REPORTED_VERSION=v0.8.0`.
+REPORTED_VERSION ?=
+
 # Build flags
-LDFLAGS = -ldflags="-X main.version=$(VERSION) -X main.commit=$(COMMIT_HASH) -X main.buildTime=$(BUILD_TIME)"
+LDFLAGS = -ldflags="-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=$(REPORTED_VERSION)"
 GO_BUILD_FLAGS = -trimpath
 
 # Docker configuration
@@ -37,11 +43,11 @@ COLOR_GREEN = \033[32m
 COLOR_YELLOW = \033[33m
 COLOR_BLUE = \033[34m
 
-.PHONY: help all build build-verbose build-progress build-progress-force build-release build-release-verbose build-cross clean test test-integration test-unit test-cover fmt vet check-fmt lint staticcheck docker-build docker-run docker-push deps-check deps-install vault-dev vault-register vault-enable
+.PHONY: help all build build-verbose build-progress build-progress-force build-release build-release-verbose build-cross clean test test-integration test-unit test-cover fmt vet check-fmt lint staticcheck security gosec govulncheck docker-build docker-run docker-push deps-check deps-install vault-dev vault-register vault-enable
 
 # Default target
 # =============================================================================
-all: check-fmt test lint-strict staticcheck-ci build
+all: check-fmt test lint-strict staticcheck-ci security build
 
 # Help target
 # =============================================================================
@@ -87,7 +93,7 @@ build-release-verbose: ## Build release binary with verbose output
 build-cross: ## Build for multiple platforms
 	@echo "$(COLOR_GREEN)Building for multiple platforms...$(COLOR_RESET)"
 	@mkdir -p $(BUILD_DIR)
-	@for platform in linux/amd64 darwin/amd64 darwin/arm64 windows/amd64; do \
+	@for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do \
 		os=$$(echo $$platform | cut -d/ -f1); \
 		arch=$$(echo $$platform | cut -d/ -f2); \
 		output=$(BUILD_DIR)/$(PLUGIN_NAME)-$$os-$$arch; \
@@ -151,7 +157,7 @@ test-prometheus-ci: build ## Test Prometheus metrics integration (CI mode, no pr
 	./scripts/test_prometheus_metrics.sh --ci
 	@echo "$(COLOR_GREEN)✓ Prometheus metrics test completed$(COLOR_RESET)"
 
-test-all: check-fmt lint-strict staticcheck test ## Run all tests and checks
+test-all: check-fmt lint-strict staticcheck security test ## Run all tests and checks
 	@echo "$(COLOR_GREEN)✓ All tests and checks passed$(COLOR_RESET)"
 
 test-complete: check-fmt lint-strict staticcheck test test-metrics test-prometheus-ci ## Run all tests including metrics
@@ -189,7 +195,7 @@ golangci-lint: ## Run golangci-lint
 	@echo "$(COLOR_GREEN)Running golangci-lint...$(COLOR_RESET)"
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "$(COLOR_YELLOW)golangci-lint not found, installing...$(COLOR_RESET)"; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; \
 	fi
 	golangci-lint run --timeout=5m
 	@echo "$(COLOR_GREEN)✓ golangci-lint complete$(COLOR_RESET)"
@@ -219,6 +225,29 @@ staticcheck-ci: ## Run CI version of staticcheck (ignoring common issues)
 	fi
 	staticcheck -f stylish -checks "all,-SA1012,-ST1000" ./...
 
+# Security
+# =============================================================================
+security: gosec govulncheck ## Run all static security checks
+	@echo "$(COLOR_GREEN)✓ Security checks complete$(COLOR_RESET)"
+
+gosec: ## Run gosec static security scanner
+	@echo "$(COLOR_GREEN)Running gosec...$(COLOR_RESET)"
+	@if ! command -v gosec >/dev/null 2>&1; then \
+		echo "$(COLOR_YELLOW)gosec not found, installing...$(COLOR_RESET)"; \
+		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
+	fi
+	gosec -quiet ./...
+	@echo "$(COLOR_GREEN)✓ gosec complete$(COLOR_RESET)"
+
+govulncheck: ## Check dependencies and stdlib for known vulnerabilities
+	@echo "$(COLOR_GREEN)Running govulncheck...$(COLOR_RESET)"
+	@if ! command -v govulncheck >/dev/null 2>&1; then \
+		echo "$(COLOR_YELLOW)govulncheck not found, installing...$(COLOR_RESET)"; \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	fi
+	govulncheck ./...
+	@echo "$(COLOR_GREEN)✓ govulncheck complete$(COLOR_RESET)"
+
 # Dependencies
 # =============================================================================
 deps-check: ## Check for dependency issues
@@ -231,7 +260,9 @@ deps-install: ## Install development dependencies
 	@echo "$(COLOR_GREEN)Installing development dependencies...$(COLOR_RESET)"
 	go install honnef.co/go/tools/cmd/staticcheck@latest
 	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	go install golang.org/x/vuln/cmd/govulncheck@latest
 	@echo "$(COLOR_GREEN)✓ Development dependencies installed$(COLOR_RESET)"
 
 # Utility Targets
@@ -330,7 +361,7 @@ release-all: build-cross docker-build ## Build release for all platforms
 
 # CI/CD Targets
 # =============================================================================
-ci: deps-check check-fmt lint-strict staticcheck-ci test ## Run CI pipeline
+ci: deps-check check-fmt lint-strict staticcheck-ci security test ## Run CI pipeline
 	@echo "$(COLOR_GREEN)✓ CI pipeline completed successfully$(COLOR_RESET)"
 
 ci-build: ci build-release ## Full CI build pipeline

@@ -1,0 +1,9 @@
+version: "2"
+
+# Lint configuration for vault-plugin-secrets-openai.
+# Enables the default linters plus `unparam` so `make lint-strict` / `make all`
+# catch unused function parameters and dead code that gopls flags in-editor but
+# the default linter set otherwise misses.
+linters:
+  enable:
+    - unparam

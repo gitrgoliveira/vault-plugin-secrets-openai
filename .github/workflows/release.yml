@@ -36,14 +36,26 @@ jobs:
             VERSION=${GITHUB_REF#refs/tags/}
           else
             VERSION=${{ github.event.inputs.version }}
-            if [[ ! $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "ERROR: Version must be in format v0.1.0"
-              exit 1
-            fi
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Fail the release early if the version is not valid.
+          # The `v*.*.*` tag trigger can still match invalid values such as
+          # `v1.2.3foo`, and Vault rejects a non-empty, invalid RunningVersion
+          # at plugin registration. This pattern mirrors the Go-side check in
+          # plugin.validateReportedVersion (semver with a leading 'v', optional
+          # pre-release and build metadata).
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid version '$VERSION'. Must be valid semver with a leading 'v', e.g. v0.1.0, v0.1.0-rc.1, or v0.1.0+meta."
+            exit 1
+          fi
+          echo "Version '$VERSION' is valid."
 
       - name: Run tests
         run: make test
@@ -52,20 +64,31 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
-          # Build Linux binary
-          GOOS=linux GOARCH=amd64 go build -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
+          # Vault uses the self-reported plugin version (RunningVersion) to
+          # populate the plugin catalog. The version was validated above as a
+          # semver with a leading 'v', the format Vault requires.
+          LDFLAGS="-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=${{ steps.version.outputs.version }}"
+
+          # Build Linux amd64 binary
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
           cd bin && tar czf vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-amd64.tar.gz vault-plugin-secrets-openai
           shasum -a 256 vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-amd64.tar.gz > vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-amd64.tar.gz.sha256
           cd ..
+
+          # Build Linux arm64 binary
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
+          cd bin && tar czf vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-arm64.tar.gz vault-plugin-secrets-openai
+          shasum -a 256 vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-arm64.tar.gz > vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-arm64.tar.gz.sha256
+          cd ..
           
           # Build macOS Intel binary
-          GOOS=darwin GOARCH=amd64 go build -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
+          GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
           cd bin && tar czf vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz vault-plugin-secrets-openai
           shasum -a 256 vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz > vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz.sha256
           cd ..
           
           # Build macOS Apple Silicon binary
-          GOOS=darwin GOARCH=arm64 go build -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
+          GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
           cd bin && tar czf vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz vault-plugin-secrets-openai
           shasum -a 256 vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz > vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz.sha256
 
@@ -80,6 +103,8 @@ jobs:
           files: |
             bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-amd64.tar.gz
             bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-amd64.tar.gz.sha256
+            bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-arm64.tar.gz
+            bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-linux-arm64.tar.gz.sha256
             bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz
             bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz.sha256
             bin/vault-plugin-secrets-openai-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz

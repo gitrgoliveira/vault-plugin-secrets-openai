@@ -254,7 +254,7 @@ This plugin emits Prometheus-compatible metrics through Vault's telemetry system
 ---
 
 ## Development
-- Go 1.26.2+
+- Go 1.26.4+
 - Vault 1.19+ for containerized plugin support
 - Vagrant (for containerized plugin usage)
 
