@@ -137,17 +137,22 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 	// manually revoke it, and prevents the next rotation from treating the new
 	// key ID as the one to revoke. A per-ID path ensures that a second
 	// consecutive failure does not overwrite a previously recorded stale key.
+	//
+	// The key ID is persisted in Vault storage (encrypted by the barrier) and is
+	// deliberately not written to logs in clear text, to avoid leaking sensitive
+	// credential metadata into the log/audit trail.
 	if oldAdminKeyID != "" {
 		b.Logger().Debug("Cleaning up previous admin API key")
 		if err := newClient.RevokeAdminAPIKey(ctx, oldAdminKeyID); err != nil {
-			b.Logger().Error("Failed to revoke previous admin key - the key may still be active in OpenAI",
-				"old_key_id", oldAdminKeyID, "error", err)
 			if putErr := storage.Put(ctx, &logical.StorageEntry{
 				Key:   pendingRevocationPath(oldAdminKeyID),
 				Value: []byte(oldAdminKeyID),
 			}); putErr != nil {
-				b.Logger().Error("Failed to record stale admin key for manual cleanup",
-					"old_key_id", oldAdminKeyID, "error", putErr)
+				b.Logger().Error("Failed to revoke previous admin key and failed to record it for manual cleanup; the key may still be active in OpenAI",
+					"error", err, "record_error", putErr)
+			} else {
+				b.Logger().Error("Failed to revoke previous admin key; recorded under storage path rotation/pending_revocation/ for manual cleanup; the key may still be active in OpenAI",
+					"error", err)
 			}
 			return false, err
 		}

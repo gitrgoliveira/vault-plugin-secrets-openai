@@ -404,9 +404,9 @@ func TestRotation_PendingRevocationPerKey(t *testing.T) {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/admin_api_keys"):
 			keyCounter++
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(fmt.Sprintf(
+			_, _ = fmt.Fprintf(w,
 				`{"object":"admin_api_key","id":"new-key-%d","name":"n","value":"sk-new-%d","created_at":1}`,
-				keyCounter, keyCounter)))
+				keyCounter, keyCounter)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/admin_api_keys"):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[]}`))
