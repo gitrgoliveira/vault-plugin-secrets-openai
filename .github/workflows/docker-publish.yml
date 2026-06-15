@@ -25,11 +25,11 @@ jobs:
           else
             VERSION=dev-$(git rev-parse --short HEAD)
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
           # Vault requires the self-reported plugin version to be valid semver
           # with a leading 'v'. This pattern matches plugin.validateReportedVersion
-          # and release.yml (optional pre-release and build metadata).
+          # and release.yml (optional pre-release and build metadata). Only
+          # reported_version is consumed downstream (as the REPORTED_VERSION
+          # build arg); the image's own tags come from docker/metadata-action.
           if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
             echo "reported_version=$VERSION" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref_type }}" == "tag" ]]; then
