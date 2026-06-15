@@ -73,10 +73,10 @@ func (m *MockOpenAIServer) writeNotFound(w http.ResponseWriter, message string) 
 	writeError(w, http.StatusNotFound, "not_found", message)
 }
 
-// writeJSONResponse writes a JSON response with proper error handling
-func (m *MockOpenAIServer) writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+// writeJSONResponse writes a 200 JSON response with proper error handling
+func (m *MockOpenAIServer) writeJSONResponse(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		m.failureMessage = fmt.Sprintf("Failed to encode response: %v", err)
 		// If we can't encode the response, try to write a simple error
@@ -233,11 +233,11 @@ func (m *MockOpenAIServer) createServiceAccount(w http.ResponseWriter, r *http.R
 	}
 
 	// Return the created service account and API key
-	m.writeJSONResponse(w, http.StatusOK, response)
+	m.writeJSONResponse(w, response)
 }
 
 // getServiceAccount handles service account retrieval requests
-func (m *MockOpenAIServer) getServiceAccount(w http.ResponseWriter, r *http.Request, projectID, serviceAccountID string) {
+func (m *MockOpenAIServer) getServiceAccount(w http.ResponseWriter, _ *http.Request, projectID, serviceAccountID string) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -256,11 +256,11 @@ func (m *MockOpenAIServer) getServiceAccount(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Return the service account
-	m.writeJSONResponse(w, http.StatusOK, svcAcc)
+	m.writeJSONResponse(w, svcAcc)
 }
 
 // listServiceAccounts handles service account listing requests
-func (m *MockOpenAIServer) listServiceAccounts(w http.ResponseWriter, r *http.Request, projectID string) {
+func (m *MockOpenAIServer) listServiceAccounts(w http.ResponseWriter, _ *http.Request, projectID string) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -268,7 +268,7 @@ func (m *MockOpenAIServer) listServiceAccounts(w http.ResponseWriter, r *http.Re
 	projectAccounts, exists := m.serviceAccounts[projectID]
 	if !exists {
 		// Return empty list for non-existent projects
-		m.writeJSONResponse(w, http.StatusOK, map[string][]ServiceAccount{"data": {}})
+		m.writeJSONResponse(w, map[string][]ServiceAccount{"data": {}})
 		return
 	}
 
@@ -279,11 +279,11 @@ func (m *MockOpenAIServer) listServiceAccounts(w http.ResponseWriter, r *http.Re
 	}
 
 	// Return the list of service accounts
-	m.writeJSONResponse(w, http.StatusOK, map[string][]ServiceAccount{"data": accounts})
+	m.writeJSONResponse(w, map[string][]ServiceAccount{"data": accounts})
 }
 
 // deleteServiceAccount handles service account deletion requests
-func (m *MockOpenAIServer) deleteServiceAccount(w http.ResponseWriter, r *http.Request, projectID, serviceAccountID string) {
+func (m *MockOpenAIServer) deleteServiceAccount(w http.ResponseWriter, _ *http.Request, projectID, serviceAccountID string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -377,11 +377,11 @@ func (m *MockOpenAIServer) createAdminAPIKey(w http.ResponseWriter, r *http.Requ
 	key.Owner.Role = "owner"
 
 	// Return the created admin API key
-	m.writeJSONResponse(w, http.StatusOK, key)
+	m.writeJSONResponse(w, key)
 }
 
 // listAdminAPIKeys handles admin API key listing requests
-func (m *MockOpenAIServer) listAdminAPIKeys(w http.ResponseWriter, r *http.Request) {
+func (m *MockOpenAIServer) listAdminAPIKeys(w http.ResponseWriter, _ *http.Request) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -407,11 +407,11 @@ func (m *MockOpenAIServer) listAdminAPIKeys(w http.ResponseWriter, r *http.Reque
 	keys[0].Owner.CreatedAt = nowUnix
 	keys[0].Owner.Role = "owner"
 
-	m.writeJSONResponse(w, http.StatusOK, map[string][]adminAPIKey{"data": keys})
+	m.writeJSONResponse(w, map[string][]adminAPIKey{"data": keys})
 }
 
 // revokeAdminAPIKey handles admin API key revocation requests
-func (m *MockOpenAIServer) revokeAdminAPIKey(w http.ResponseWriter, r *http.Request, keyID string) {
+func (m *MockOpenAIServer) revokeAdminAPIKey(w http.ResponseWriter, _ *http.Request, _ string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
