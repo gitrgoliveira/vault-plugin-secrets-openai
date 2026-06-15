@@ -29,8 +29,10 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           # Vault requires the self-reported plugin version to be valid semver
           # with a leading 'v'. Only report it for real release tags; leave it
-          # empty (unversioned) otherwise so registration never fails.
-          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          # empty (unversioned) otherwise so registration never fails. This
+          # pattern matches plugin.validateReportedVersion and release.yml
+          # (optional pre-release and build metadata).
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
             echo "reported_version=$VERSION" >> $GITHUB_OUTPUT
           else
             echo "reported_version=" >> $GITHUB_OUTPUT
