@@ -36,7 +36,7 @@ func TestValidateAPIEndpoint(t *testing.T) {
 	}{
 		// Valid
 		{"openai production endpoint", "https://api.openai.com/v1", false, ""},
-		{"custom https hostname", "https://proxy.example.com/v1", false, ""},
+		{"custom https host", "https://proxy.example.com/v1", false, ""},
 		{"https with port", "https://api.openai.com:443/v1", false, ""},
 		{"http loopback by IP", "http://127.0.0.1:8080/v1", false, ""},
 		{"http private IP", "http://10.0.0.1/v1", false, ""},
@@ -51,7 +51,7 @@ func TestValidateAPIEndpoint(t *testing.T) {
 		// Malformed
 		{"empty string", "", true, "valid URL"},
 		{"just a path", "/v1", true, "http or https"},
-		{"missing hostname", "https:///v1", true, "hostname"},
+		{"missing host", "https:///v1", true, "host"},
 	}
 
 	for _, tt := range tests {

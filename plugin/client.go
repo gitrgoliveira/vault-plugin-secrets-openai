@@ -64,9 +64,9 @@ func validateAPIEndpoint(rawURL string) error {
 	default:
 		return fmt.Errorf("api_endpoint must use http or https (got %q)", parsed.Scheme)
 	}
-	hostname := parsed.Hostname()
-	if hostname == "" {
-		return fmt.Errorf("api_endpoint must include a hostname")
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("api_endpoint must include a host")
 	}
 	return nil
 }

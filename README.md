@@ -132,7 +132,7 @@ vault write openai/config \
 
 **Network egress control**
 
-The plugin validates that `api_endpoint` is a valid `http` or `https` URL with a hostname. It does not enforce network egress policy. If you need to restrict where this plugin can connect, use Vault ACL parameter constraints and network controls such as firewall, security group, or service mesh egress policy.
+The plugin validates that `api_endpoint` is a valid `http` or `https` URL with a host, which can be a hostname or an IP address. It does not enforce network egress policy. If you need to restrict where this plugin can connect, use Vault ACL parameter constraints and network controls such as firewall, security group, or service mesh egress policy.
 
 For example, you can pin `api_endpoint` to the public OpenAI API with `allowed_parameters`:
 
