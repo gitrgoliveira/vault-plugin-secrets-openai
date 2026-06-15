@@ -36,10 +36,14 @@ jobs:
             VERSION=${GITHUB_REF#refs/tags/}
           else
             VERSION=${{ github.event.inputs.version }}
-            if [[ ! $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "ERROR: Version must be in format v0.1.0"
-              exit 1
-            fi
+          fi
+          # Validate the version regardless of source (tag push or manual input).
+          # The `v*.*.*` tag trigger can still match invalid values such as
+          # `v1.2.3foo`, and Vault rejects a non-empty, invalid RunningVersion
+          # at plugin registration, so enforce a strict semver-with-leading-'v'.
+          if [[ ! $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: Version must be valid semver with a leading 'v', e.g. v0.1.0 or v0.1.0-rc.1 (got '$VERSION')"
+            exit 1
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -53,8 +57,8 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           # Vault uses the self-reported plugin version (RunningVersion) to
-          # populate the plugin catalog. The release tag is validated as
-          # vX.Y.Z, which is the required semver-with-leading-'v' format.
+          # populate the plugin catalog. The version was validated above as a
+          # semver with a leading 'v', the format Vault requires.
           LDFLAGS="-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=${{ steps.version.outputs.version }}"
 
           # Build Linux amd64 binary
