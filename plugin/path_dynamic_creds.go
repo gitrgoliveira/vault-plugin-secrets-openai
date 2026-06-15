@@ -310,8 +310,8 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 		return logical.ErrorResponse("project_id %q does not exist", role.ProjectID), nil
 	}
 
-	// Initialize the client if it hasn't been
-	if err := b.ensureClientConfigured(ctx, req.Storage); err != nil {
+	client, err := b.configuredClient(ctx, req.Storage)
+	if err != nil {
 		return logical.ErrorResponse("OpenAI configuration error: %s", err.Error()), nil
 	}
 
@@ -352,9 +352,6 @@ func (b *backend) pathCredsCreate(ctx context.Context, req *logical.Request, dat
 
 	// Create service account (which automatically creates an API key in OpenAI API)
 	b.Logger().Debug("Creating service account with API key", "name", svcAccountName, "project", projectInfo.ID)
-	b.RLock()
-	client := b.client
-	b.RUnlock()
 	svcAccount, apiKey, err := client.CreateServiceAccount(ctx, projectInfo.ID, CreateServiceAccountRequest{
 		Name: svcAccountName,
 	})
@@ -428,15 +425,12 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 
 	b.Logger().Debug("revoking API key for service Account", "service_account_id", serviceAccountID)
 
-	// Initialize the client if it hasn't been
-	if err := b.ensureClientConfigured(ctx, req.Storage); err != nil {
+	client, err := b.configuredClient(ctx, req.Storage)
+	if err != nil {
 		return logical.ErrorResponse("OpenAI configuration error: %s", err.Error()), nil
 	}
 
 	// Delete the service account
-	b.RLock()
-	client := b.client
-	b.RUnlock()
 	if err := client.DeleteServiceAccount(ctx, serviceAccountID, projectID); err != nil {
 		return nil, fmt.Errorf("error deleting service account: %w", err)
 	}

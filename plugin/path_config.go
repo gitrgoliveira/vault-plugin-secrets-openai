@@ -329,15 +329,11 @@ func (b *backend) validateProject(ctx context.Context, s logical.Storage, projec
 		return nil, fmt.Errorf("project ID is required")
 	}
 
-	// Ensure client is configured
-	if err := b.ensureClientConfigured(ctx, s); err != nil {
+	// Validate project with OpenAI API
+	client, err := b.configuredClient(ctx, s)
+	if err != nil {
 		return nil, err
 	}
-
-	// Validate project with OpenAI API
-	b.RLock()
-	client := b.client
-	b.RUnlock()
 	projectInfo, err := client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI project validation failed: %w", err)

@@ -84,3 +84,20 @@ func (b *backend) ensureClientConfigured(ctx context.Context, storage logical.St
 	b.client = client
 	return nil
 }
+
+// configuredClient returns a stable client snapshot or an explicit error if
+// configuration was deleted between the lazy-initialization check and the read
+// lock snapshot.
+func (b *backend) configuredClient(ctx context.Context, storage logical.Storage) (ClientAPI, error) {
+	if err := b.ensureClientConfigured(ctx, storage); err != nil {
+		return nil, err
+	}
+
+	b.RLock()
+	client := b.client
+	b.RUnlock()
+	if client == nil {
+		return nil, fmt.Errorf("OpenAI is not configured")
+	}
+	return client, nil
+}
