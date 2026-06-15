@@ -5,6 +5,7 @@ package openaisecrets
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/vault/sdk/framework"
@@ -32,7 +33,7 @@ func TestFormatName(t *testing.T) {
 			hasError: false,
 		},
 		{
-			name:     "complex template",
+			name:     "complex field template",
 			template: "vault-{{.RoleName}}-{{.RandomSuffix}}-{{.ProjectName}}",
 			data: map[string]interface{}{
 				"RoleName":     "test",
@@ -40,6 +41,25 @@ func TestFormatName(t *testing.T) {
 				"ProjectName":  "proj1",
 			},
 			expected: "vault-test-abc123-proj1",
+			hasError: false,
+		},
+		{
+			name:     "vault username template truncate function",
+			template: "vault-{{.RoleName | truncate 4}}-{{.RandomSuffix}}",
+			data: map[string]interface{}{
+				"RoleName":     "testingrole",
+				"RandomSuffix": "abc123",
+			},
+			expected: "vault-test-abc123",
+			hasError: false,
+		},
+		{
+			name:     "vault username template random function",
+			template: "vault-{{.RoleName}}-{{random 8}}",
+			data: map[string]interface{}{
+				"RoleName": "test",
+			},
+			expected: "",
 			hasError: false,
 		},
 		{
@@ -61,7 +81,11 @@ func TestFormatName(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				if strings.Contains(tt.template, "{{random") {
+					assert.Regexp(t, `^vault-test-[A-Za-z0-9]{8}$`, result)
+				} else {
+					assert.Equal(t, tt.expected, result)
+				}
 			}
 		})
 	}

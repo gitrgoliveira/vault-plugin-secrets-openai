@@ -203,6 +203,7 @@ func TestValidateNameTemplate(t *testing.T) {
 	}{
 		{"default template", "vault-{{.RoleName}}-{{.RandomSuffix}}", false},
 		{"project name template", "{{.ProjectName}}-{{.RandomSuffix}}", false},
+		{"vault username template functions", "vault-{{.RoleName | truncate 4}}-{{random 8}}", false},
 		{"empty template", "", true},
 		{"broken syntax", "vault-{{.RoleName", true},
 		{"reserved word", "openai", true},

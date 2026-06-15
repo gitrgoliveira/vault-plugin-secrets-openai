@@ -4,14 +4,13 @@
 package openaisecrets
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
-	"text/template"
 	"time"
 
 	"github.com/hashicorp/vault/sdk/framework"
+	sdktemplate "github.com/hashicorp/vault/sdk/helper/template"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
@@ -440,19 +439,17 @@ func (b *backend) dynamicCredsRevoke(ctx context.Context, req *logical.Request, 
 
 // Helper functions
 
-// formatName formats a name template with the provided data.
+// formatName formats a name template with Vault's username templating helper.
 func formatName(templateStr string, data map[string]interface{}) (string, error) {
-	tmpl, err := template.New("name").Parse(templateStr)
+	tmpl, err := sdktemplate.NewTemplate(sdktemplate.Template(templateStr))
 	if err != nil {
 		return "", fmt.Errorf("invalid template: %w", err)
 	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
+	result, err := tmpl.Generate(data)
+	if err != nil {
 		return "", fmt.Errorf("error executing template: %w", err)
 	}
-
-	return buf.String(), nil
+	return result, nil
 }
 
 // validateNameTemplate checks that a service-account name template parses,

@@ -185,7 +185,7 @@ Create or update a role definition for generating dynamic credentials.
 **Parameters:**
 - `name` (string, required) - Name of the role
 - `project_id` (string, required) - OpenAI Project ID (e.g., `proj_abc123`)
-- `service_account_name_template` (string, optional) - Template for service account names (default: `vault-{{.RoleName}}-{{.RandomSuffix}}`)
+- `service_account_name_template` (string, optional) - [Vault username template](https://developer.hashicorp.com/vault/docs/concepts/username-templating) for service account names (default: `vault-{{.RoleName}}-{{.RandomSuffix}}`). The template receives `RoleName`, `RandomSuffix`, and `ProjectName`.
 - `service_account_description` (string, optional) - Description for service accounts (default: `Service account created by Vault`)
 - `ttl` (duration, optional) - Default TTL for API keys (default: `1h`)
 - `max_ttl` (duration, optional) - Maximum TTL for API keys (default: `24h`)
