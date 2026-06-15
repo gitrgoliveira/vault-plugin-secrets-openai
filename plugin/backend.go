@@ -10,6 +10,7 @@ package openaisecrets
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -32,6 +33,26 @@ import (
 // to empty (unversioned) for local and development builds.
 var ReportedVersion = ""
 
+// reportedVersionRegexp matches the version format Vault accepts for a plugin's
+// self-reported RunningVersion: a Semantic Version with a leading 'v', with an
+// optional pre-release/build suffix (e.g. v0.8.0, v1.2.3-rc.1). Vault rejects a
+// non-empty, invalid value at plugin registration.
+var reportedVersionRegexp = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+
+// validateReportedVersion checks that a self-reported plugin version is either
+// empty (unversioned) or a valid semver with a leading 'v'. It exists so a
+// malformed build-time injected version fails fast at plugin startup, with a
+// clear error, instead of surfacing as an opaque Vault registration failure.
+func validateReportedVersion(v string) error {
+	if v == "" {
+		return nil
+	}
+	if !reportedVersionRegexp.MatchString(v) {
+		return fmt.Errorf("invalid plugin version %q: must be a valid semantic version with a leading 'v' (e.g. v0.8.0) or empty", v)
+	}
+	return nil
+}
+
 // ClientAPI defines the interface for OpenAI client operations used by the backend
 // This allows for mocking in tests.
 type ClientAPI interface {
@@ -45,6 +66,12 @@ type ClientAPI interface {
 }
 
 func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
+	// Fail fast on a malformed build-time injected version rather than letting
+	// Vault reject it with an opaque error during plugin registration.
+	if err := validateReportedVersion(ReportedVersion); err != nil {
+		return nil, err
+	}
+
 	// Create a new OpenAI client with the logger from the backend config
 	openaiClient := NewClient("", conf.Logger)
 	b := Backend(openaiClient)
