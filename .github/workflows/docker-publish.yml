@@ -62,6 +62,11 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          # Keep the manifest list clean (amd64 + arm64 only). Disabling the
+          # default provenance attestation avoids an extra "unknown/unknown"
+          # entry in the image index that can surprise existing consumers and
+          # older tooling.
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
