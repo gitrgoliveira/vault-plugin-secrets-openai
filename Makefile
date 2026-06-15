@@ -195,7 +195,7 @@ golangci-lint: ## Run golangci-lint
 	@echo "$(COLOR_GREEN)Running golangci-lint...$(COLOR_RESET)"
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "$(COLOR_YELLOW)golangci-lint not found, installing...$(COLOR_RESET)"; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; \
 	fi
 	golangci-lint run --timeout=5m
 	@echo "$(COLOR_GREEN)✓ golangci-lint complete$(COLOR_RESET)"
@@ -260,7 +260,7 @@ deps-install: ## Install development dependencies
 	@echo "$(COLOR_GREEN)Installing development dependencies...$(COLOR_RESET)"
 	go install honnef.co/go/tools/cmd/staticcheck@latest
 	go install golang.org/x/tools/cmd/goimports@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	go install github.com/securego/gosec/v2/cmd/gosec@latest
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 	@echo "$(COLOR_GREEN)✓ Development dependencies installed$(COLOR_RESET)"
