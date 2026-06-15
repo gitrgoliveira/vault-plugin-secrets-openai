@@ -42,10 +42,9 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 	// Create a new client with the existing admin API key
 	oldClient := NewClient(config.AdminAPIKey, b.Logger())
 	oldClientConfig := &Config{
-		AdminAPIKey:          config.AdminAPIKey,
-		APIEndpoint:          config.APIEndpoint,
-		OrganizationID:       config.OrganizationID,
-		AllowPrivateEndpoint: config.AllowPrivateEndpoint,
+		AdminAPIKey:    config.AdminAPIKey,
+		APIEndpoint:    config.APIEndpoint,
+		OrganizationID: config.OrganizationID,
 	}
 
 	if err := oldClient.SetConfig(oldClientConfig); err != nil {
@@ -93,10 +92,9 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 	// Test the new key
 	newClient := NewClient(newAdminKey, b.Logger())
 	newClientConfig := &Config{
-		AdminAPIKey:          newAdminKey,
-		APIEndpoint:          config.APIEndpoint,
-		OrganizationID:       config.OrganizationID,
-		AllowPrivateEndpoint: config.AllowPrivateEndpoint,
+		AdminAPIKey:    newAdminKey,
+		APIEndpoint:    config.APIEndpoint,
+		OrganizationID: config.OrganizationID,
 	}
 
 	if err := newClient.SetConfig(newClientConfig); err != nil {

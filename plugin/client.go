@@ -9,10 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"syscall"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -31,115 +29,31 @@ const (
 
 // Client represents an OpenAI API client
 type Client struct {
-	httpClient           *http.Client
-	apiEndpoint          string
-	adminAPIKey          string
-	adminAPIKeyID        string
-	organizationID       string
-	allowPrivateEndpoint bool
-	logger               hclog.Logger
+	httpClient     *http.Client
+	apiEndpoint    string
+	adminAPIKey    string
+	adminAPIKeyID  string
+	organizationID string
+	logger         hclog.Logger
 }
 
 // NewClient creates a new OpenAI client
 func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
-	c := &Client{
+	return &Client{
+		httpClient:     &http.Client{Timeout: 30 * time.Second},
 		apiEndpoint:    DefaultAPIEndpoint,
 		adminAPIKey:    adminAPIKey,
 		organizationID: "", // Will be set through SetConfig
 		logger:         logger,
 	}
-	c.httpClient = &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: c.guardedTransport(),
-	}
-	return c
 }
 
-// guardedTransport returns an http.Transport whose dialer rejects connections
-// to private or link-local IP addresses at dial time. The check runs after DNS
-// resolution against the resolved address, which closes the gap that hostname
-// validation alone leaves open (a hostname that resolves to an internal IP) for
-// direct connections.
-//
-// Deployment notes:
-//   - Outbound proxy (HTTP(S)_PROXY): the dialer connects to the proxy, and for
-//     https tunnels the destination via CONNECT. The Control hook therefore
-//     inspects the proxy address, not the real target. This cuts both ways: a
-//     proxy on a public IP lets a private destination through unchecked (a
-//     bypass), while a proxy on a private IP is itself blocked (an over-block).
-//   - Service mesh: with a transparent sidecar (iptables/eBPF redirect), the
-//     dialer still targets the original destination, so a public OpenAI
-//     endpoint is allowed and then transparently redirected to the loopback
-//     sidecar. But if api_endpoint resolves to an in-mesh address (e.g. a
-//     Kubernetes ClusterIP / *.svc.cluster.local, usually RFC1918) the dial is
-//     blocked.
-//
-// In all of the blocked cases above, set allow_private_endpoint=true to permit
-// the private target. Loopback is always allowed. Because config-write is a
-// privileged operation, the residual proxy bypass is accepted as
-// defense-in-depth rather than a complete control.
-func (c *Client) guardedTransport() *http.Transport {
-	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-		Control: func(_, address string, _ syscall.RawConn) error {
-			return c.checkDialAddress(address)
-		},
-	}
-	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-}
-
-// checkDialAddress rejects a resolved dial address that targets a private or
-// link-local IP, unless it is loopback or private endpoints are explicitly
-// allowed.
-func (c *Client) checkDialAddress(address string) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		host = address
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || ip.IsLoopback() {
-		return nil
-	}
-	if c.allowPrivateEndpoint {
-		return nil
-	}
-	if isBlockedIP(ip) {
-		return fmt.Errorf("connection to private or link-local address %s is not allowed", ip)
-	}
-	return nil
-}
-
-// isBlockedIP reports whether an IP is in a range that should not be reachable
-// from the plugin by default (RFC1918 private, link-local, or unspecified).
-func isBlockedIP(ip net.IP) bool {
-	return ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified()
-}
-
-// validateAPIEndpoint checks that the supplied endpoint URL is safe to use.
-//
-// Rules:
-//   - Must be a valid URL with a non-empty hostname.
-//   - http is permitted only for loopback (127.0.0.1, ::1, localhost) so local
-//     test/mock servers work while plaintext credential transmission to remote
-//     hosts is blocked.
-//   - IP-literal endpoints in private or link-local ranges are rejected to
-//     prevent Server-Side Request Forgery (SSRF), unless allowPrivate is set.
-//
-// Hostname endpoints that resolve to private ranges are caught at dial time by
-// checkDialAddress; this function provides fast feedback at config-write time.
-func validateAPIEndpoint(rawURL string, allowPrivate bool) error {
+// validateAPIEndpoint performs a fail-fast syntax check for api_endpoint at
+// config-write time. It deliberately does not implement SSRF policy: an
+// operator with write access to openai/config is already choosing where the
+// plugin connects. Restrict endpoint values with Vault ACL parameter
+// constraints and network egress policy when that matters.
+func validateAPIEndpoint(rawURL string) error {
 	parsed, err := url.ParseRequestURI(rawURL)
 	if err != nil {
 		return fmt.Errorf("api_endpoint is not a valid URL: %w", err)
@@ -148,25 +62,11 @@ func validateAPIEndpoint(rawURL string, allowPrivate bool) error {
 	case "https", "http":
 		// handled below
 	default:
-		return fmt.Errorf("api_endpoint must use https (got %q)", parsed.Scheme)
+		return fmt.Errorf("api_endpoint must use http or https (got %q)", parsed.Scheme)
 	}
 	hostname := parsed.Hostname()
 	if hostname == "" {
 		return fmt.Errorf("api_endpoint must include a hostname")
-	}
-
-	if ip := net.ParseIP(hostname); ip != nil {
-		if parsed.Scheme == "http" && !ip.IsLoopback() {
-			return fmt.Errorf("api_endpoint with http scheme is only allowed for loopback addresses (127.0.0.1, ::1)")
-		}
-		if !ip.IsLoopback() && !allowPrivate && isBlockedIP(ip) {
-			return fmt.Errorf("api_endpoint must not target a private or link-local IP address; set allow_private_endpoint=true to override")
-		}
-		return nil
-	}
-
-	if parsed.Scheme == "http" && hostname != "localhost" {
-		return fmt.Errorf("api_endpoint with http scheme is only allowed for loopback addresses (use localhost or 127.0.0.1)")
 	}
 	return nil
 }
@@ -174,11 +74,10 @@ func validateAPIEndpoint(rawURL string, allowPrivate bool) error {
 // Config contains configuration for the OpenAI client
 // Add AdminAPIKeyID to track the key's ID for revocation
 type Config struct {
-	AdminAPIKey          string `json:"admin_api_key"`
-	AdminAPIKeyID        string `json:"admin_api_key_id,omitempty"`
-	APIEndpoint          string `json:"api_endpoint"`
-	OrganizationID       string `json:"organization_id"`
-	AllowPrivateEndpoint bool   `json:"allow_private_endpoint,omitempty"`
+	AdminAPIKey    string `json:"admin_api_key"`
+	AdminAPIKeyID  string `json:"admin_api_key_id,omitempty"`
+	APIEndpoint    string `json:"api_endpoint"`
+	OrganizationID string `json:"organization_id"`
 }
 
 // ServiceAccount represents an OpenAI project service account
@@ -273,10 +172,9 @@ func (c *Client) SetConfig(config *Config) error {
 	c.adminAPIKey = config.AdminAPIKey
 	c.adminAPIKeyID = config.AdminAPIKeyID
 	c.organizationID = config.OrganizationID
-	c.allowPrivateEndpoint = config.AllowPrivateEndpoint
 
 	if config.APIEndpoint != "" {
-		if err := validateAPIEndpoint(config.APIEndpoint, config.AllowPrivateEndpoint); err != nil {
+		if err := validateAPIEndpoint(config.APIEndpoint); err != nil {
 			return err
 		}
 		c.apiEndpoint = config.APIEndpoint

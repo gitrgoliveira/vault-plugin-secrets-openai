@@ -21,12 +21,11 @@ const (
 // openaiConfig contains the configuration for the OpenAI secrets engine
 // Only supports the current OpenAI API model and automated rotation.
 type openaiConfig struct {
-	AdminAPIKey          string    `json:"admin_api_key"`
-	AdminAPIKeyID        string    `json:"admin_api_key_id"`
-	APIEndpoint          string    `json:"api_endpoint"`
-	OrganizationID       string    `json:"organization_id"`
-	AllowPrivateEndpoint bool      `json:"allow_private_endpoint"`
-	LastRotatedTime      time.Time `json:"last_rotated_time"`
+	AdminAPIKey     string    `json:"admin_api_key"`
+	AdminAPIKeyID   string    `json:"admin_api_key_id"`
+	APIEndpoint     string    `json:"api_endpoint"`
+	OrganizationID  string    `json:"organization_id"`
+	LastRotatedTime time.Time `json:"last_rotated_time"`
 
 	// Automated rotation configuration
 	automatedrotationutil.AutomatedRotationParams
@@ -80,11 +79,6 @@ func (b *backend) pathAdminConfig() []*framework.Path {
 						Description: "URL to the OpenAI API. Defaults to https://api.openai.com/v1",
 						Default:     DefaultAPIEndpoint,
 					},
-					"allow_private_endpoint": {
-						Type:        framework.TypeBool,
-						Description: "Allow api_endpoint to target a private or link-local address. Defaults to false. Enable only when pointing the plugin at a trusted internal OpenAI-compatible proxy.",
-						Default:     false,
-					},
 				}
 				// Add the automated rotation fields
 				automatedrotationutil.AddAutomatedRotationFields(fields)
@@ -133,10 +127,9 @@ func (b *backend) pathConfigRead(ctx context.Context, req *logical.Request, data
 	}
 
 	respData := map[string]interface{}{
-		"api_endpoint":           config.APIEndpoint,
-		"organization_id":        config.OrganizationID,
-		"admin_api_key_id":       config.AdminAPIKeyID,
-		"allow_private_endpoint": config.AllowPrivateEndpoint,
+		"api_endpoint":     config.APIEndpoint,
+		"organization_id":  config.OrganizationID,
+		"admin_api_key_id": config.AdminAPIKeyID,
 	}
 
 	// Add automated rotation parameters to the response
@@ -202,10 +195,6 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		config.APIEndpoint = DefaultAPIEndpoint
 	}
 
-	if allowPrivate, ok := data.GetOk("allow_private_endpoint"); ok {
-		config.AllowPrivateEndpoint = allowPrivate.(bool)
-	}
-
 	// Parse automated rotation parameters
 	if err := config.ParseAutomatedRotationFields(data); err != nil {
 		return logical.ErrorResponse("error parsing automated rotation fields: %s", err), nil
@@ -219,11 +208,10 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	// Create a test client to validate the configuration
 	client := NewClient(config.AdminAPIKey, b.Logger())
 	clientConfig := &Config{
-		AdminAPIKey:          config.AdminAPIKey,
-		AdminAPIKeyID:        config.AdminAPIKeyID,
-		APIEndpoint:          config.APIEndpoint,
-		OrganizationID:       config.OrganizationID,
-		AllowPrivateEndpoint: config.AllowPrivateEndpoint,
+		AdminAPIKey:    config.AdminAPIKey,
+		AdminAPIKeyID:  config.AdminAPIKeyID,
+		APIEndpoint:    config.APIEndpoint,
+		OrganizationID: config.OrganizationID,
 	}
 
 	if err := client.SetConfig(clientConfig); err != nil {

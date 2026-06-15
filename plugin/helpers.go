@@ -46,11 +46,10 @@ func (b *backend) configureClientFromStorage(ctx context.Context, storage logica
 
 	client := NewClient(config.AdminAPIKey, b.Logger())
 	clientConfig := &Config{
-		AdminAPIKey:          config.AdminAPIKey,
-		AdminAPIKeyID:        config.AdminAPIKeyID,
-		APIEndpoint:          config.APIEndpoint,
-		OrganizationID:       config.OrganizationID,
-		AllowPrivateEndpoint: config.AllowPrivateEndpoint,
+		AdminAPIKey:    config.AdminAPIKey,
+		AdminAPIKeyID:  config.AdminAPIKeyID,
+		APIEndpoint:    config.APIEndpoint,
+		OrganizationID: config.OrganizationID,
 	}
 
 	if err := client.SetConfig(clientConfig); err != nil {

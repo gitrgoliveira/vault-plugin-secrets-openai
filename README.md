@@ -117,7 +117,6 @@ Configure the OpenAI secrets engine with admin API credentials.
 - `admin_api_key_id` (string, required) - Admin API key ID for OpenAI  
 - `organization_id` (string, required) - Organization ID for OpenAI
 - `api_endpoint` (string, optional) - URL for the OpenAI API (default: `https://api.openai.com/v1`)
-- `allow_private_endpoint` (bool, optional) - Allow `api_endpoint` to target a private or link-local address (default: `false`). Enable only when pointing the plugin at a trusted internal OpenAI-compatible proxy.
 - `rotation_period` (duration, optional) - Period between automatic admin API key rotations
 - `rotation_window` (duration, optional) - Window during which rotation can occur
 - `disable_automated_rotation` (bool, optional) - Disable automated rotation of admin credentials
@@ -131,12 +130,22 @@ vault write openai/config \
   rotation_period=604800
 ```
 
-**Network egress and service mesh**
+**Network egress control**
 
-The plugin validates `api_endpoint` at config time and re-checks the resolved IP at connection time to mitigate Server-Side Request Forgery (SSRF). By default it rejects connections to private or link-local addresses. These checks apply only to the plugin's outbound calls to the OpenAI API; they do not affect Vault's own cluster, storage, or mesh traffic.
+The plugin validates that `api_endpoint` is a valid `http` or `https` URL with a hostname. It does not enforce network egress policy. If you need to restrict where this plugin can connect, use Vault ACL parameter constraints and network controls such as firewall, security group, or service mesh egress policy.
 
-- With a transparent service mesh sidecar (for example Istio, Consul, or Linkerd using iptables or eBPF redirection) and the public `https://api.openai.com/v1` endpoint, no configuration change is needed. The plugin dials the public address, which is allowed, and the sidecar redirects it transparently.
-- If `api_endpoint` targets an in-mesh address (for example a Kubernetes ClusterIP or a `*.svc.cluster.local` name that resolves to an RFC1918 range), or if an outbound `HTTP(S)_PROXY` on a private address is used, set `allow_private_endpoint=true` so the plugin can reach it.
+For example, you can pin `api_endpoint` to the public OpenAI API with `allowed_parameters`:
+
+```hcl
+path "openai/config" {
+  capabilities = ["create", "update"]
+
+  allowed_parameters = {
+    "api_endpoint" = ["https://api.openai.com/v1"]
+    "*"            = []
+  }
+}
+```
 
 #### Read configuration
 ```
@@ -148,7 +157,6 @@ Read the current configuration. Sensitive fields are not returned.
 - `api_endpoint` - The configured API endpoint
 - `organization_id` - The organization ID
 - `admin_api_key_id` - The admin API key ID
-- `allow_private_endpoint` - Whether private/link-local endpoints are permitted
 - `rotation_period` - Automatic rotation period (if enabled)
 - `rotation_window` - Rotation window (if enabled)
 - `last_rotated` - Last rotation timestamp (if automated rotation is enabled)

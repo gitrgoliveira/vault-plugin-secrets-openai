@@ -14,7 +14,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/framework"
@@ -25,53 +24,39 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Item 1: SSRF / api_endpoint validation
+// Item 1: api_endpoint URL validation
 // ---------------------------------------------------------------------------
 
 func TestValidateAPIEndpoint(t *testing.T) {
 	tests := []struct {
-		name         string
-		endpoint     string
-		allowPrivate bool
-		wantError    bool
-		errContains  string
+		name        string
+		endpoint    string
+		wantError   bool
+		errContains string
 	}{
 		// Valid
-		{"openai production endpoint", "https://api.openai.com/v1", false, false, ""},
-		{"custom https hostname", "https://proxy.example.com/v1", false, false, ""},
-		{"https with port", "https://api.openai.com:443/v1", false, false, ""},
-		{"http loopback by IP", "http://127.0.0.1:8080/v1", false, false, ""},
-		{"http loopback by hostname", "http://localhost:9090/v1", false, false, ""},
+		{"openai production endpoint", "https://api.openai.com/v1", false, ""},
+		{"custom https hostname", "https://proxy.example.com/v1", false, ""},
+		{"https with port", "https://api.openai.com:443/v1", false, ""},
+		{"http loopback by IP", "http://127.0.0.1:8080/v1", false, ""},
+		{"http private IP", "http://10.0.0.1/v1", false, ""},
+		{"https private IP", "https://10.0.0.1/v1", false, ""},
+		{"https link-local IP", "https://169.254.169.254/latest/meta-data", false, ""},
 
 		// Invalid scheme
-		{"ftp scheme", "ftp://api.openai.com/v1", false, true, "https"},
-		{"no scheme", "api.openai.com/v1", false, true, "valid URL"},
-
-		// http with non-loopback is rejected
-		{"http public IP", "http://1.2.3.4/v1", false, true, "loopback"},
-		{"http public hostname", "http://api.openai.com/v1", false, true, "loopback"},
-		{"http private IP", "http://10.0.0.1/v1", false, true, "loopback"},
-
-		// SSRF: private / link-local literals
-		{"AWS metadata service", "https://169.254.169.254/latest/meta-data", false, true, "link-local"},
-		{"RFC1918 10.x", "https://10.0.0.1/", false, true, "private"},
-		{"RFC1918 172.16.x", "https://172.16.0.1/", false, true, "private"},
-		{"RFC1918 192.168.x", "https://192.168.1.1/", false, true, "private"},
-		{"IPv6 link-local", "https://[fe80::1]/", false, true, "link-local"},
-
-		// Opt-in override
-		{"private allowed when opted in", "https://10.0.0.1/v1", true, false, ""},
-		{"metadata allowed when opted in", "https://169.254.169.254/", true, false, ""},
+		{"ftp scheme", "ftp://api.openai.com/v1", true, "http or https"},
+		{"file scheme", "file:///tmp/openai", true, "http or https"},
+		{"no scheme", "api.openai.com/v1", true, "valid URL"},
 
 		// Malformed
-		{"empty string", "", false, true, "valid URL"},
-		{"just a path", "/v1", false, true, "https"},
-		{"missing hostname", "https:///v1", false, true, "hostname"},
+		{"empty string", "", true, "valid URL"},
+		{"just a path", "/v1", true, "http or https"},
+		{"missing hostname", "https:///v1", true, "hostname"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateAPIEndpoint(tt.endpoint, tt.allowPrivate)
+			err := validateAPIEndpoint(tt.endpoint)
 			if tt.wantError {
 				require.Error(t, err, "expected error for endpoint %q", tt.endpoint)
 				if tt.errContains != "" {
@@ -84,63 +69,17 @@ func TestValidateAPIEndpoint(t *testing.T) {
 	}
 }
 
-// TestCheckDialAddress verifies the dial-time guard that closes the gap a
-// hostname-only validation leaves open: a name that resolves to an internal IP.
-func TestCheckDialAddress(t *testing.T) {
-	c := NewClient("k", hclog.NewNullLogger())
-
-	// Private and link-local resolved addresses are rejected by default.
-	for _, addr := range []string{"10.0.0.1:443", "192.168.1.1:443", "169.254.169.254:80", "[fe80::1]:443"} {
-		require.Error(t, c.checkDialAddress(addr), "expected %q to be blocked", addr)
-	}
-
-	// Loopback and public addresses are allowed.
-	for _, addr := range []string{"127.0.0.1:8080", "[::1]:8080", "1.2.3.4:443"} {
-		require.NoError(t, c.checkDialAddress(addr), "expected %q to be allowed", addr)
-	}
-
-	// Opt-in relaxes the guard for private addresses.
-	c.allowPrivateEndpoint = true
-	require.NoError(t, c.checkDialAddress("10.0.0.1:443"))
-}
-
-// TestDialGuard_BlocksPrivateAtTransport drives a real request through the
-// guarded transport to prove the resolved-IP check fires at dial time, even
-// when the endpoint bypassed config-write validation.
-func TestDialGuard_BlocksPrivateAtTransport(t *testing.T) {
-	c := NewClient("k", hclog.NewNullLogger())
-	// Simulate a hostname that resolved to a private IP by assigning the
-	// endpoint directly, bypassing SetConfig validation.
-	c.apiEndpoint = "https://10.0.0.1"
-
-	_, err := c.doRequest(context.Background(), http.MethodGet, "/v1/models", nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "private or link-local")
-
-	// With the opt-in flag the guard no longer blocks; the request fails for a
-	// different reason (no server listening / timeout), not the SSRF guard. Use
-	// a short context so the unreachable dial does not wait for the full client
-	// timeout.
-	c.allowPrivateEndpoint = true
-	shortCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, err = c.doRequest(shortCtx, http.MethodGet, "/v1/models", nil)
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "private or link-local")
-}
-
-// TestSSRF_PrivateEndpointRejectedAtConfig verifies end-to-end rejection at
-// config-write time.
-func TestSSRF_PrivateEndpointRejectedAtConfig(t *testing.T) {
+// TestInvalidEndpointRejectedAtConfig verifies end-to-end URL syntax
+// validation at config-write time.
+func TestInvalidEndpointRejectedAtConfig(t *testing.T) {
 	b := getTestBackend(t)
 	ctx := context.Background()
 	schema := b.pathAdminConfig()[1].Fields
 
 	for _, ep := range []string{
-		"http://10.0.0.1/v1",
-		"https://192.168.1.1/v1",
-		"https://169.254.169.254/latest/meta-data",
 		"ftp://api.openai.com/v1",
+		"api.openai.com/v1",
+		"https:///v1",
 	} {
 		t.Run(ep, func(t *testing.T) {
 			req := &logical.Request{
@@ -163,35 +102,6 @@ func TestSSRF_PrivateEndpointRejectedAtConfig(t *testing.T) {
 			require.NotNil(t, resp)
 			assert.True(t, resp.IsError(), "expected error response for endpoint %q", ep)
 		})
-	}
-}
-
-// TestConfig_AllowPrivateEndpoint confirms the opt-in flag permits a private
-// endpoint at config-write time.
-func TestConfig_AllowPrivateEndpoint(t *testing.T) {
-	b := getTestBackend(t)
-	ctx := context.Background()
-
-	req := &logical.Request{
-		Operation:  logical.UpdateOperation,
-		Path:       "config",
-		Storage:    &logical.InmemStorage{},
-		MountPoint: TestMountPoint,
-	}
-	fd := &framework.FieldData{
-		Raw: map[string]interface{}{
-			"admin_api_key":          "test-key",
-			"admin_api_key_id":       "test-key-id",
-			"organization_id":        "org-123",
-			"api_endpoint":           "https://10.0.0.1/v1",
-			"allow_private_endpoint": true,
-		},
-		Schema: b.pathAdminConfig()[1].Fields,
-	}
-	resp, err := b.pathConfigWrite(ctx, req, fd)
-	require.NoError(t, err)
-	if resp != nil {
-		assert.False(t, resp.IsError(), "private endpoint should be accepted when opted in")
 	}
 }
 
