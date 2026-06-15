@@ -19,6 +19,19 @@ import (
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
+// ReportedVersion is the plugin's self-reported semantic version. Vault uses it
+// to populate the plugin catalog (see `vault plugin list`) and to support
+// version pinning and controlled upgrades.
+//
+// It is injected at build time via the linker, e.g.:
+//
+//	-ldflags "-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=v0.8.0"
+//
+// It MUST be a valid Semantic Version with a leading 'v' (e.g. v0.8.0) or empty.
+// A non-empty, invalid value causes plugin registration to fail, so it defaults
+// to empty (unversioned) for local and development builds.
+var ReportedVersion = ""
+
 // ClientAPI defines the interface for OpenAI client operations used by the backend
 // This allows for mocking in tests.
 type ClientAPI interface {
@@ -81,6 +94,7 @@ func Backend(client ClientAPI) *backend {
 		Clean:            b.clean,
 		BackendType:      logical.TypeLogical,
 		RotateCredential: b.rotateRootCredential,
+		RunningVersion:   ReportedVersion,
 	}
 
 	return b

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	openaisecrets "github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin"
@@ -13,23 +12,7 @@ import (
 	"github.com/hashicorp/vault/sdk/plugin"
 )
 
-// Build information injected at link time via -ldflags "-X main.version=... etc".
-// Defaults are used for local/dev builds where no ldflags are provided.
-var (
-	version   = "dev"
-	commit    = "unknown"
-	buildTime = "unknown"
-)
-
 func main() {
-	// Support a -version/--version flag for inspecting the embedded build info.
-	for _, arg := range os.Args[1:] {
-		if arg == "-version" || arg == "--version" {
-			fmt.Printf("vault-plugin-secrets-openai %s (commit %s, built %s)\n", version, commit, buildTime)
-			os.Exit(0)
-		}
-	}
-
 	apiClientMeta := &api.PluginAPIClientMeta{}
 
 	flags := apiClientMeta.FlagSet()

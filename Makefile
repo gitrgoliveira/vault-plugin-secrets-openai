@@ -18,8 +18,14 @@ ifeq ($(GOOS), darwin)
 	HASH_CMD = shasum -a 256
 endif
 
+# Reported plugin version. Must be a valid semver with a leading 'v' (e.g.
+# v0.8.0) or empty. Vault rejects a non-empty, invalid value at registration,
+# so it defaults to empty (unversioned) for local/dev builds. Override for a
+# real build, e.g. `make build REPORTED_VERSION=v0.8.0`.
+REPORTED_VERSION ?=
+
 # Build flags
-LDFLAGS = -ldflags="-X main.version=$(VERSION) -X main.commit=$(COMMIT_HASH) -X main.buildTime=$(BUILD_TIME)"
+LDFLAGS = -ldflags="-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=$(REPORTED_VERSION)"
 GO_BUILD_FLAGS = -trimpath
 
 # Docker configuration

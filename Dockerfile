@@ -6,9 +6,10 @@ FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=dev
-ARG COMMIT=unknown
-ARG BUILD_TIME=unknown
+# Plugin semver reported to Vault. Must be a valid semver with a leading 'v'
+# (e.g. v0.8.0) or empty. Defaults to empty (unversioned) so non-release builds
+# do not fail Vault plugin registration.
+ARG REPORTED_VERSION=
 
 WORKDIR /src
 
@@ -18,7 +19,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
-    -ldflags="-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+    -ldflags="-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=${REPORTED_VERSION}" \
     -o /out/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai
 
 # Final stage

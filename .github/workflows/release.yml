@@ -52,10 +52,10 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
-          # Inject build metadata into the binaries (matches the Makefile LDFLAGS).
-          COMMIT=$(git rev-parse --short HEAD)
-          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          LDFLAGS="-X main.version=${{ steps.version.outputs.version }} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}"
+          # Vault uses the self-reported plugin version (RunningVersion) to
+          # populate the plugin catalog. The release tag is validated as
+          # vX.Y.Z, which is the required semver-with-leading-'v' format.
+          LDFLAGS="-X github.com/gitrgoliveira/vault-plugin-secrets-openai/plugin.ReportedVersion=${{ steps.version.outputs.version }}"
 
           # Build Linux amd64 binary
           GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o bin/vault-plugin-secrets-openai ./cmd/vault-plugin-secrets-openai

@@ -27,8 +27,14 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          # Vault requires the self-reported plugin version to be valid semver
+          # with a leading 'v'. Only report it for real release tags; leave it
+          # empty (unversioned) otherwise so registration never fails.
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "reported_version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "reported_version=" >> $GITHUB_OUTPUT
+          fi
           echo "Version: $VERSION"
 
       - name: Set up QEMU
@@ -70,9 +76,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-            COMMIT=${{ steps.version.outputs.commit }}
-            BUILD_TIME=${{ steps.version.outputs.build_time }}
+            REPORTED_VERSION=${{ steps.version.outputs.reported_version }}
 
       - name: Logout from GHCR
         run: docker logout ghcr.io
