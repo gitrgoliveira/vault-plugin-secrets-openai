@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/framework"
@@ -283,7 +284,7 @@ func TestConfigDelete_DeregistersRotationJob(t *testing.T) {
 		OrganizationID: "org-123",
 		APIEndpoint:    DefaultAPIEndpoint,
 	}
-	config.RotationPeriod = 24 * 3600
+	config.RotationPeriod = 24 * time.Hour
 	require.True(t, config.ShouldRegisterRotationJob())
 	entry, err := logical.StorageEntryJSON(configPath, config)
 	require.NoError(t, err)
