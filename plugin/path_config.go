@@ -277,8 +277,10 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 
 // pathConfigDelete deletes the configuration
 func (b *backend) pathConfigDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	// Deregister any active rotation job before removing the config so Vault's
-	// rotation manager does not keep firing against a missing configuration.
+	// Deregister any rotation job associated with this config before removing the
+	// stored configuration. Rotation jobs are managed separately from plugin
+	// storage, so leaving one registered could cause later rotation attempts to
+	// run after the config is gone.
 	config, err := getConfig(ctx, req.Storage)
 	if err != nil {
 		return nil, err
