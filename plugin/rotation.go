@@ -15,13 +15,6 @@ import (
 // Core Rotation Implementation
 //------------------------------------------------------------------------------
 
-// pendingRevocationPath returns the storage path used to record an admin key ID
-// that could not be revoked during rotation, keyed per ID so concurrent or
-// consecutive failures do not overwrite each other.
-func pendingRevocationPath(keyID string) string {
-	return fmt.Sprintf("rotation/pending_revocation/%s", keyID)
-}
-
 // rotateAdminAPIKey rotates the admin API key
 func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage) (bool, error) {
 	// Get the existing configuration
@@ -130,28 +123,16 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 	b.Unlock()
 
 	// Revoke the previous key now that the new one is confirmed and persisted.
-	// If revocation fails, the new key is already in storage, so record the
-	// stale key ID under a per-ID storage path. This lets an operator find and
-	// manually revoke it, and prevents the next rotation from treating the new
-	// key ID as the one to revoke. A per-ID path ensures that a second
-	// consecutive failure does not overwrite a previously recorded stale key.
-	//
-	// The key ID is persisted in Vault storage (encrypted by the barrier) and is
-	// deliberately not written to logs in clear text, to avoid leaking sensitive
-	// credential metadata into the log/audit trail.
+	// If revocation fails, the new key remains active and stored, while the
+	// previous key may still be active in OpenAI. Do not log the key ID here:
+	// admin key IDs are credential metadata and may be captured by logs or audit
+	// sinks. Deferred retry/cleanup belongs in the bounded-overlap follow-up
+	// design, where records have a proper lifecycle.
 	if oldAdminKeyID != "" {
 		b.Logger().Debug("Cleaning up previous admin API key")
 		if err := newClient.RevokeAdminAPIKey(ctx, oldAdminKeyID); err != nil {
-			if putErr := storage.Put(ctx, &logical.StorageEntry{
-				Key:   pendingRevocationPath(oldAdminKeyID),
-				Value: []byte(oldAdminKeyID),
-			}); putErr != nil {
-				b.Logger().Error("Failed to revoke previous admin key and failed to record it for manual cleanup; the key may still be active in OpenAI",
-					"error", err, "record_error", putErr)
-			} else {
-				b.Logger().Error("Failed to revoke previous admin key; recorded under storage path rotation/pending_revocation/ for manual cleanup; the key may still be active in OpenAI",
-					"error", err)
-			}
+			b.Logger().Error("Failed to revoke previous admin key; the key may still be active in OpenAI",
+				"error", err)
 			return false, err
 		}
 	} else {
