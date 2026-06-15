@@ -131,6 +131,13 @@ vault write openai/config \
   rotation_period=604800
 ```
 
+**Network egress and service mesh**
+
+The plugin validates `api_endpoint` at config time and re-checks the resolved IP at connection time to mitigate Server-Side Request Forgery (SSRF). By default it rejects connections to private or link-local addresses. These checks apply only to the plugin's outbound calls to the OpenAI API; they do not affect Vault's own cluster, storage, or mesh traffic.
+
+- With a transparent service mesh sidecar (for example Istio, Consul, or Linkerd using iptables or eBPF redirection) and the public `https://api.openai.com/v1` endpoint, no configuration change is needed. The plugin dials the public address, which is allowed, and the sidecar redirects it transparently.
+- If `api_endpoint` targets an in-mesh address (for example a Kubernetes ClusterIP or a `*.svc.cluster.local` name that resolves to an RFC1918 range), or if an outbound `HTTP(S)_PROXY` on a private address is used, set `allow_private_endpoint=true` so the plugin can reach it.
+
 #### Read configuration
 ```
 GET /openai/config

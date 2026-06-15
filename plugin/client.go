@@ -61,13 +61,23 @@ func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
 // validation alone leaves open (a hostname that resolves to an internal IP) for
 // direct connections.
 //
-// Limitation: when an outbound proxy is configured via HTTP(S)_PROXY, the
-// dialer connects to the proxy and (for https) tunnels via CONNECT, so the
-// destination IP is resolved by the proxy and is not seen by checkDialAddress.
-// In that deployment the resolved-address guard cannot inspect the real target.
-// Config-write is a privileged operation, so this residual gap is accepted as
-// defense-in-depth rather than a complete control; loopback is always allowed
-// and operators can opt in to private endpoints with allow_private_endpoint.
+// Deployment notes:
+//   - Outbound proxy (HTTP(S)_PROXY): the dialer connects to the proxy, and for
+//     https tunnels the destination via CONNECT. The Control hook therefore
+//     inspects the proxy address, not the real target. This cuts both ways: a
+//     proxy on a public IP lets a private destination through unchecked (a
+//     bypass), while a proxy on a private IP is itself blocked (an over-block).
+//   - Service mesh: with a transparent sidecar (iptables/eBPF redirect), the
+//     dialer still targets the original destination, so a public OpenAI
+//     endpoint is allowed and then transparently redirected to the loopback
+//     sidecar. But if api_endpoint resolves to an in-mesh address (e.g. a
+//     Kubernetes ClusterIP / *.svc.cluster.local, usually RFC1918) the dial is
+//     blocked.
+//
+// In all of the blocked cases above, set allow_private_endpoint=true to permit
+// the private target. Loopback is always allowed. Because config-write is a
+// privileged operation, the residual proxy bypass is accepted as
+// defense-in-depth rather than a complete control.
 func (c *Client) guardedTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
