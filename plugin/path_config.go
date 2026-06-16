@@ -6,6 +6,7 @@ package openaisecrets
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/vault/sdk/framework"
@@ -15,8 +16,13 @@ import (
 )
 
 const (
-	configPath = "config"
+	configPath        = "config"
+	adminAPIKeyPrefix = "sk-admin"
 )
+
+func hasExpectedAdminAPIKeyPrefix(key string) bool {
+	return strings.HasPrefix(key, adminAPIKeyPrefix)
+}
 
 // openaiConfig contains the configuration for the OpenAI secrets engine
 // Only supports the current OpenAI API model and automated rotation.
@@ -163,6 +169,10 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	adminAPIKey, ok := data.GetOk("admin_api_key")
 	if ok {
 		config.AdminAPIKey = adminAPIKey.(string)
+		if !hasExpectedAdminAPIKeyPrefix(config.AdminAPIKey) {
+			b.Logger().Warn("configured admin_api_key does not use the expected OpenAI admin key prefix",
+				"expected_prefix", adminAPIKeyPrefix)
+		}
 	}
 
 	adminAPIKeyID, ok := data.GetOk("admin_api_key_id")
