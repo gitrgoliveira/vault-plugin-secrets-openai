@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -45,6 +47,41 @@ func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
 		organizationID: "", // Will be set through SetConfig
 		logger:         logger,
 	}
+}
+
+// validateAPIEndpoint performs a fail-fast syntax check for api_endpoint at
+// config-write time. It deliberately does not implement SSRF policy: an
+// operator with write access to openai/config is already choosing where the
+// plugin connects. Restrict endpoint values with Vault ACL parameter
+// constraints and network egress policy when that matters.
+func validateAPIEndpoint(rawURL string) error {
+	if strings.Contains(rawURL, "#") {
+		return fmt.Errorf("api_endpoint must not include a fragment")
+	}
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("api_endpoint is not a valid URL: %w", err)
+	}
+	switch parsed.Scheme {
+	case "https", "http":
+		// handled below
+	default:
+		return fmt.Errorf("api_endpoint must use http or https (got %q)", parsed.Scheme)
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("api_endpoint must include a host")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("api_endpoint must not include userinfo")
+	}
+	if parsed.RawQuery != "" {
+		return fmt.Errorf("api_endpoint must not include a query string")
+	}
+	if parsed.Fragment != "" {
+		return fmt.Errorf("api_endpoint must not include a fragment")
+	}
+	return nil
 }
 
 // Config contains configuration for the OpenAI client
@@ -150,6 +187,9 @@ func (c *Client) SetConfig(config *Config) error {
 	c.organizationID = config.OrganizationID
 
 	if config.APIEndpoint != "" {
+		if err := validateAPIEndpoint(config.APIEndpoint); err != nil {
+			return err
+		}
 		c.apiEndpoint = config.APIEndpoint
 	}
 
@@ -192,7 +232,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		}
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Limit the response body to 1 MiB to prevent memory exhaustion from
+	// oversized or malicious responses.
+	const maxResponseBytes = 1 << 20 // 1 MiB
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
@@ -233,13 +276,19 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, fmt.Errorf("%s", errMsg)
 		}
 
-		// Fallback for non-standard error format
-		c.logger.Error("OpenAI API non-standard error",
+		// Fallback for non-standard error format. Log a truncated body at debug
+		// level to avoid leaking organization IDs or account metadata into logs
+		// and the audit trail, and keep the raw body out of the returned error.
+		preview := string(respBody)
+		if len(preview) > 200 {
+			preview = preview[:200] + "...[truncated]"
+		}
+		c.logger.Debug("OpenAI API non-standard error",
 			"status", resp.StatusCode,
-			"body", string(respBody),
+			"body_preview", preview,
 			"method", method,
 			"path", path)
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("API error (%d) from OpenAI", resp.StatusCode)
 	}
 
 	return respBody, nil

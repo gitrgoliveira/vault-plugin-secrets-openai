@@ -4,9 +4,12 @@
 package openaisecrets
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/stretchr/testify/assert"
@@ -134,4 +137,39 @@ func TestConfig_AdminConfig_CRUD(t *testing.T) {
 	}, &framework.FieldData{})
 	require.NoError(t, err)
 	require.Nil(t, resp)
+}
+
+func TestConfigWrite_WarnsWhenAdminKeyPrefixUnexpected(t *testing.T) {
+	b := getTestBackend(t)
+	var logs bytes.Buffer
+	b.logger = hclog.New(&hclog.LoggerOptions{
+		Level:  hclog.Warn,
+		Output: &logs,
+	})
+
+	storage := &logical.InmemStorage{}
+	ctx := context.Background()
+	const unexpectedKey = "sk-project-not-admin"
+
+	resp, err := b.pathConfigWrite(ctx, &logical.Request{
+		Storage:    storage,
+		MountPoint: "openai/",
+		Path:       "config",
+	}, &framework.FieldData{
+		Raw: map[string]interface{}{
+			"admin_api_key":    unexpectedKey,
+			"admin_api_key_id": "test-admin-key-id",
+			"organization_id":  "org-123",
+			"api_endpoint":     "https://api.test.com/v1",
+			"rotation_period":  0,
+		},
+		Schema: b.pathAdminConfig()[1].Fields,
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp)
+
+	logOutput := logs.String()
+	assert.Contains(t, logOutput, "configured admin_api_key does not use the expected OpenAI admin key prefix")
+	assert.Contains(t, logOutput, adminAPIKeyPrefix)
+	assert.False(t, strings.Contains(logOutput, unexpectedKey), "admin API key value must not be logged")
 }

@@ -50,8 +50,14 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 
 	// Try up to 3 times with exponential backoff
 	for attempt := 1; attempt <= 3; attempt++ {
+		// Use a random suffix for the key name so rotation timing is not
+		// disclosed to anyone who can list admin API keys in the OpenAI console.
+		keyNameSuffix, randErr := generateRandomString(8)
+		if randErr != nil {
+			keyNameSuffix = fmt.Sprintf("r%d", attempt) // safe fallback
+		}
 		b.Logger().Debug("Creating new admin API key", "attempt", attempt)
-		newAdminKey, newAdminKeyID, createErr = oldClient.CreateAdminAPIKey(ctx, fmt.Sprintf("vault-rotated-admin-key-%d", time.Now().Unix()))
+		newAdminKey, newAdminKeyID, createErr = oldClient.CreateAdminAPIKey(ctx, fmt.Sprintf("vault-admin-key-%s", keyNameSuffix))
 
 		if createErr == nil && newAdminKey != "" && newAdminKeyID != "" {
 			break
@@ -110,14 +116,23 @@ func (b *backend) rotateAdminAPIKey(ctx context.Context, storage logical.Storage
 		return false, err
 	}
 
-	// Update the current client
+	// Update the current client under the write lock so concurrent requests
+	// always see a consistent client reference.
+	b.Lock()
 	b.client = newClient
+	b.Unlock()
 
-	// Clean up the previous key using the new client and previous key ID
+	// Revoke the previous key now that the new one is confirmed and persisted.
+	// If revocation fails, the new key remains active and stored, while the
+	// previous key may still be active in OpenAI. Do not log the key ID here:
+	// admin key IDs are credential metadata and may be captured by logs or audit
+	// sinks. Deferred retry/cleanup belongs in the bounded-overlap follow-up
+	// design, where records have a proper lifecycle.
 	if oldAdminKeyID != "" {
 		b.Logger().Debug("Cleaning up previous admin API key")
 		if err := newClient.RevokeAdminAPIKey(ctx, oldAdminKeyID); err != nil {
-			b.Logger().Error("Failed to revoke previous admin key", "error", err)
+			b.Logger().Error("Failed to revoke previous admin key; the key may still be active in OpenAI",
+				"error", err)
 			return false, err
 		}
 	} else {

@@ -59,15 +59,45 @@ func (b *backend) configureClientFromStorage(ctx context.Context, storage logica
 	return client, nil
 }
 
-// ensureClientConfigured ensures the backend has a configured client
-// This is used in multiple places to lazy-load the client when needed
+// ensureClientConfigured ensures the backend has a configured client.
+// It uses double-checked locking so only one goroutine initializes the client
+// when it is nil, while concurrent callers read it safely.
 func (b *backend) ensureClientConfigured(ctx context.Context, storage logical.Storage) error {
-	if b.client == nil {
-		client, err := b.configureClientFromStorage(ctx, storage)
-		if err != nil {
-			return err
-		}
-		b.client = client
+	// Fast path: client already set.
+	b.RLock()
+	hasClient := b.client != nil
+	b.RUnlock()
+	if hasClient {
+		return nil
 	}
+
+	// Slow path: acquire the write lock and re-check before initializing.
+	b.Lock()
+	defer b.Unlock()
+	if b.client != nil {
+		return nil
+	}
+	client, err := b.configureClientFromStorage(ctx, storage)
+	if err != nil {
+		return err
+	}
+	b.client = client
 	return nil
+}
+
+// configuredClient returns a stable client snapshot or an explicit error if
+// configuration was deleted between the lazy-initialization check and the read
+// lock snapshot.
+func (b *backend) configuredClient(ctx context.Context, storage logical.Storage) (ClientAPI, error) {
+	if err := b.ensureClientConfigured(ctx, storage); err != nil {
+		return nil, err
+	}
+
+	b.RLock()
+	client := b.client
+	b.RUnlock()
+	if client == nil {
+		return nil, fmt.Errorf("OpenAI is not configured")
+	}
+	return client, nil
 }

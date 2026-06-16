@@ -6,6 +6,7 @@ package openaisecrets
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/vault/sdk/framework"
@@ -15,8 +16,13 @@ import (
 )
 
 const (
-	configPath = "config"
+	configPath        = "config"
+	adminAPIKeyPrefix = "sk-admin"
 )
+
+func hasExpectedAdminAPIKeyPrefix(key string) bool {
+	return strings.HasPrefix(key, adminAPIKeyPrefix)
+}
 
 // openaiConfig contains the configuration for the OpenAI secrets engine
 // Only supports the current OpenAI API model and automated rotation.
@@ -163,6 +169,10 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 	adminAPIKey, ok := data.GetOk("admin_api_key")
 	if ok {
 		config.AdminAPIKey = adminAPIKey.(string)
+		if !hasExpectedAdminAPIKeyPrefix(config.AdminAPIKey) {
+			b.Logger().Warn("configured admin_api_key does not use the expected OpenAI admin key prefix",
+				"expected_prefix", adminAPIKeyPrefix)
+		}
 	}
 
 	adminAPIKeyID, ok := data.GetOk("admin_api_key_id")
@@ -267,19 +277,42 @@ func (b *backend) pathConfigWrite(ctx context.Context, req *logical.Request, dat
 		return nil, wrappedError
 	}
 
-	// Update backend client
+	// Update backend client under the write lock.
+	b.Lock()
 	b.client = client
+	b.Unlock()
 
 	return nil, nil
 }
 
 // pathConfigDelete deletes the configuration
 func (b *backend) pathConfigDelete(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	err := req.Storage.Delete(ctx, configPath)
-	if err == nil {
-		b.client = nil
+	// Deregister any rotation job associated with this config before removing the
+	// stored configuration. Rotation jobs are managed separately from plugin
+	// storage, so leaving one registered could cause later rotation attempts to
+	// run after the config is gone.
+	config, err := getConfig(ctx, req.Storage)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	if config != nil && config.ShouldRegisterRotationJob() {
+		deregisterReq := &rotation.RotationJobDeregisterRequest{
+			MountPoint: req.MountPoint,
+			ReqPath:    req.Path,
+		}
+		b.Logger().Debug("Deregistering rotation job during config delete", "mount", req.MountPoint+req.Path)
+		if err := b.System().DeregisterRotationJob(ctx, deregisterReq); err != nil {
+			b.Logger().Warn("failed to deregister rotation job during config delete", "error", err)
+		}
+	}
+
+	if err := req.Storage.Delete(ctx, configPath); err != nil {
+		return nil, err
+	}
+	b.Lock()
+	b.client = nil
+	b.Unlock()
+	return nil, nil
 }
 
 // getConfig returns the configuration for this backend
@@ -308,13 +341,12 @@ func (b *backend) validateProject(ctx context.Context, s logical.Storage, projec
 		return nil, fmt.Errorf("project ID is required")
 	}
 
-	// Ensure client is configured
-	if err := b.ensureClientConfigured(ctx, s); err != nil {
+	// Validate project with OpenAI API
+	client, err := b.configuredClient(ctx, s)
+	if err != nil {
 		return nil, err
 	}
-
-	// Validate project with OpenAI API
-	projectInfo, err := b.client.GetProject(ctx, projectID)
+	projectInfo, err := client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI project validation failed: %w", err)
 	}

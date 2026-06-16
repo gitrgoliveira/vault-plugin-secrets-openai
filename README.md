@@ -130,6 +130,23 @@ vault write openai/config \
   rotation_period=604800
 ```
 
+**Network egress control**
+
+The plugin validates that `api_endpoint` is a valid `http` or `https` URL with a host, which can be a hostname or an IP address. It does not enforce network egress policy. If you need to restrict where this plugin can connect, use Vault ACL parameter constraints and network controls such as firewall, security group, or service mesh egress policy.
+
+For example, you can pin `api_endpoint` to the public OpenAI API with `allowed_parameters`:
+
+```hcl
+path "openai/config" {
+  capabilities = ["create", "update"]
+
+  allowed_parameters = {
+    "api_endpoint" = ["https://api.openai.com/v1"]
+    "*"            = []
+  }
+}
+```
+
 #### Read configuration
 ```
 GET /openai/config
@@ -168,7 +185,7 @@ Create or update a role definition for generating dynamic credentials.
 **Parameters:**
 - `name` (string, required) - Name of the role
 - `project_id` (string, required) - OpenAI Project ID (e.g., `proj_abc123`)
-- `service_account_name_template` (string, optional) - Template for service account names (default: `vault-{{.RoleName}}-{{.RandomSuffix}}`)
+- `service_account_name_template` (string, optional) - [Vault username template](https://developer.hashicorp.com/vault/docs/concepts/username-templating) for service account names (default: `vault-{{.RoleName}}-{{.RandomSuffix}}`). The template receives `RoleName`, `RandomSuffix`, and `ProjectName`.
 - `service_account_description` (string, optional) - Description for service accounts (default: `Service account created by Vault`)
 - `ttl` (duration, optional) - Default TTL for API keys (default: `1h`)
 - `max_ttl` (duration, optional) - Maximum TTL for API keys (default: `24h`)
