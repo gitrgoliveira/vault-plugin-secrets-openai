@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -54,6 +55,9 @@ func NewClient(adminAPIKey string, logger hclog.Logger) *Client {
 // plugin connects. Restrict endpoint values with Vault ACL parameter
 // constraints and network egress policy when that matters.
 func validateAPIEndpoint(rawURL string) error {
+	if strings.Contains(rawURL, "#") {
+		return fmt.Errorf("api_endpoint must not include a fragment")
+	}
 	parsed, err := url.ParseRequestURI(rawURL)
 	if err != nil {
 		return fmt.Errorf("api_endpoint is not a valid URL: %w", err)
@@ -67,6 +71,15 @@ func validateAPIEndpoint(rawURL string) error {
 	host := parsed.Hostname()
 	if host == "" {
 		return fmt.Errorf("api_endpoint must include a host")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("api_endpoint must not include userinfo")
+	}
+	if parsed.RawQuery != "" {
+		return fmt.Errorf("api_endpoint must not include a query string")
+	}
+	if parsed.Fragment != "" {
+		return fmt.Errorf("api_endpoint must not include a fragment")
 	}
 	return nil
 }

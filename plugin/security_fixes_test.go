@@ -52,6 +52,9 @@ func TestValidateAPIEndpoint(t *testing.T) {
 		{"empty string", "", true, "valid URL"},
 		{"just a path", "/v1", true, "http or https"},
 		{"missing host", "https:///v1", true, "host"},
+		{"userinfo", "https://user:pass@api.openai.com/v1", true, "userinfo"},
+		{"query string", "https://api.openai.com/v1?foo=bar", true, "query"},
+		{"fragment", "https://api.openai.com/v1#fragment", true, "fragment"},
 	}
 
 	for _, tt := range tests {
